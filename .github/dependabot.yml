@@ -8,7 +8,7 @@ updates:
   # Maintain dependencies for nuget
   - package-ecosystem: "nuget"
     directory: "dotnet/"
-    open-pull-resuests-limit: 100
+    open-pull-requests-limit: 100
     schedule:
       interval: "weekly"
       day: "monday"
@@ -19,7 +19,7 @@ updates:
   # Maintain dependencies for nuget
   - package-ecosystem: "nuget"
     directory: "samples/dotnet"
-    open-pull-resuests-limit: 100
+    open-pull-requests-limit: 100
     schedule:
       interval: "weekly"
       day: "monday"
@@ -27,7 +27,7 @@ updates:
   # Maintain dependencies for npm
   - package-ecosystem: "npm"
     directory: "samples/apps"
-    open-pull-resuests-limit: 100
+    open-pull-requests-limit: 100
     schedule:
       interval: "weekly"
       day: "monday"
@@ -35,7 +35,7 @@ updates:
   # Maintain dependencies for pip
   - package-ecosystem: "pip"
     directory: "python/"
-    open-pull-resuests-limit: 100
+    open-pull-requests-limit: 100
     schedule:
       interval: "weekly"
       day: "monday"
@@ -48,7 +48,7 @@ updates:
     # Workflow files stored in the
     # default location of `.github/workflows`
     directory: "/"
-    open-pull-resuests-limit: 100
+    open-pull-requests-limit: 100
     schedule:
       interval: "weekly"
       day: "monday"
