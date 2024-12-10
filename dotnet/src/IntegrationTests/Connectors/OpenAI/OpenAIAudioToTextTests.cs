@@ -8,31 +8,21 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.AudioToText;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using SemanticKernel.IntegrationTests.TestSettings;
+using xRetry;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace SemanticKernel.IntegrationTests.Connectors.OpenAI;
 
-public sealed class OpenAIAudioToTextTests : IDisposable
+public sealed class OpenAIAudioToTextTests()
 {
-    private readonly RedirectOutput _testOutputHelper;
-    private readonly IConfigurationRoot _configuration;
+    private readonly IConfigurationRoot _configuration = new ConfigurationBuilder()
+        .AddJsonFile(path: "testsettings.json", optional: true, reloadOnChange: true)
+        .AddJsonFile(path: "testsettings.development.json", optional: true, reloadOnChange: true)
+        .AddEnvironmentVariables()
+        .AddUserSecrets<OpenAIAudioToTextTests>()
+        .Build();
 
-    public OpenAIAudioToTextTests(ITestOutputHelper output)
-    {
-        this._testOutputHelper = new RedirectOutput(output);
-        Console.SetOut(this._testOutputHelper);
-
-        // Load configuration
-        this._configuration = new ConfigurationBuilder()
-            .AddJsonFile(path: "testsettings.json", optional: false, reloadOnChange: true)
-            .AddJsonFile(path: "testsettings.development.json", optional: true, reloadOnChange: true)
-            .AddEnvironmentVariables()
-            .AddUserSecrets<OpenAIAudioToTextTests>()
-            .Build();
-    }
-
-    [Fact(Skip = "OpenAI will often throttle requests. This test is for manual verification.")]
+    [RetryFact]//(Skip = "OpenAI will often throttle requests. This test is for manual verification.")]
     public async Task OpenAIAudioToTextTestAsync()
     {
         // Arrange
@@ -51,42 +41,9 @@ public sealed class OpenAIAudioToTextTests : IDisposable
         var audioData = await BinaryData.FromStreamAsync(audio);
 
         // Act
-        var result = await service.GetTextContentAsync(new AudioContent(audioData), new OpenAIAudioToTextExecutionSettings(Filename));
+        var result = await service.GetTextContentAsync(new AudioContent(audioData, mimeType: "audio/wav"), new OpenAIAudioToTextExecutionSettings(Filename));
 
         // Assert
         Assert.Contains("The sun rises in the east and sets in the west.", result.Text, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public async Task AzureOpenAIAudioToTextTestAsync()
-    {
-        // Arrange
-        const string Filename = "test_audio.wav";
-
-        AzureOpenAIConfiguration? azureOpenAIConfiguration = this._configuration.GetSection("AzureOpenAIAudioToText").Get<AzureOpenAIConfiguration>();
-        Assert.NotNull(azureOpenAIConfiguration);
-
-        var kernel = Kernel.CreateBuilder()
-            .AddAzureOpenAIAudioToText(
-                azureOpenAIConfiguration.DeploymentName,
-                azureOpenAIConfiguration.Endpoint,
-                azureOpenAIConfiguration.ApiKey)
-            .Build();
-
-        var service = kernel.GetRequiredService<IAudioToTextService>();
-
-        await using Stream audio = File.OpenRead($"./TestData/{Filename}");
-        var audioData = await BinaryData.FromStreamAsync(audio);
-
-        // Act
-        var result = await service.GetTextContentAsync(new AudioContent(audioData), new OpenAIAudioToTextExecutionSettings(Filename));
-
-        // Assert
-        Assert.Contains("The sun rises in the east and sets in the west.", result.Text, StringComparison.OrdinalIgnoreCase);
-    }
-
-    public void Dispose()
-    {
-        this._testOutputHelper.Dispose();
     }
 }
