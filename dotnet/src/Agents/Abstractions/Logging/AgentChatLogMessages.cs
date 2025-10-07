@@ -7,8 +7,6 @@ using Microsoft.SemanticKernel.Agents.Extensions;
 
 namespace Microsoft.SemanticKernel.Agents;
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 /// <summary>
 /// Extensions for logging <see cref="AggregatorAgent"/> invocations.
 /// </summary>
@@ -62,7 +60,7 @@ internal static partial class AgentChatLogMessages
     /// Logs <see cref="AgentChat"/> added messages (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Added Messages: {MessageCount}.")]
     public static partial void LogAgentChatAddedMessages(
@@ -74,7 +72,7 @@ internal static partial class AgentChatLogMessages
     /// Logs <see cref="AgentChat"/> invoking agent (started).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] Invoking agent {AgentType}/{AgentId}/{AgentName}.")]
     public static partial void LogAgentChatInvokingAgent(
@@ -88,7 +86,7 @@ internal static partial class AgentChatLogMessages
     /// Logs <see cref="AgentChat"/> invoked agent message
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 3,
         Level = LogLevel.Trace,
         Message = "[{MethodName}] Agent message {AgentType}/{AgentId}/{AgentName}: {Message}.")]
     public static partial void LogAgentChatInvokedAgentMessage(
@@ -129,7 +127,7 @@ internal static partial class AgentChatLogMessages
     /// Logs <see cref="AgentChat"/> invoked agent (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 4,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Invoked agent {AgentType}/{AgentId}/{AgentName}.")]
     public static partial void LogAgentChatInvokedAgent(
@@ -143,7 +141,7 @@ internal static partial class AgentChatLogMessages
     /// Logs <see cref="AgentChat"/> creating agent channel (started).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 5,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] Creating channel for {AgentType}: {AgentId}/{AgentName}")]
     public static partial void LogAgentChatCreatingChannel(
@@ -157,7 +155,7 @@ internal static partial class AgentChatLogMessages
     /// Logs <see cref="AgentChat"/> created agent channel (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 6,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Created channel for {AgentType}: {AgentId}/{AgentName}")]
     public static partial void LogAgentChatCreatedChannel(
