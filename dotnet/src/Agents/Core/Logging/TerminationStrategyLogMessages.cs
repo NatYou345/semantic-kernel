@@ -5,8 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.SemanticKernel.Agents.Chat;
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 /// <summary>
 /// Extensions for logging <see cref="TerminationStrategy"/> invocations.
 /// </summary>
@@ -36,7 +34,7 @@ internal static partial class TerminationStrategyLogMessages
     /// Logs <see cref="TerminationStrategy"/> agent out of scope.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] {AgentType} agent out of scope for termination: {AgentId}/{AgentName}.")]
     public static partial void LogTerminationStrategyAgentOutOfScope(
@@ -50,7 +48,7 @@ internal static partial class TerminationStrategyLogMessages
     /// Logs <see cref="TerminationStrategy"/> evaluated criteria (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Evaluated termination for agent {AgentType}: {AgentId}/{AgentName} - {TerminationResult}")]
     public static partial void LogTerminationStrategyEvaluatedCriteria(

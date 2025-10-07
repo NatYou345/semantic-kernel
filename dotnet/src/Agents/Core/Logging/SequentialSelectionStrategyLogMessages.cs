@@ -4,8 +4,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.SemanticKernel.Agents.Chat;
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 /// <summary>
 /// Extensions for logging <see cref="SequentialSelectionStrategy"/> invocations.
 /// </summary>

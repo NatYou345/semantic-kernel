@@ -5,8 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.SemanticKernel.Agents.Chat;
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 /// <summary>
 /// Extensions for logging <see cref="RegexTerminationStrategy"/> invocations.
 /// </summary>
@@ -34,7 +32,7 @@ internal static partial class RegExTerminationStrategyLogMessages
     /// Logs <see cref="RegexTerminationStrategy"/> evaluating expression (started).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] Evaluating expression: {Expression}")]
     public static partial void LogRegexTerminationStrategyEvaluatingExpression(
@@ -46,7 +44,7 @@ internal static partial class RegExTerminationStrategyLogMessages
     /// Logs <see cref="RegexTerminationStrategy"/> expression matched (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Expression matched: {Expression}")]
     public static partial void LogRegexTerminationStrategyMatchedExpression(
@@ -58,7 +56,7 @@ internal static partial class RegExTerminationStrategyLogMessages
     /// Logs <see cref="RegexTerminationStrategy"/> no match (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 3,
         Level = LogLevel.Information,
         Message = "[{MethodName}] No expression matched.")]
     public static partial void LogRegexTerminationStrategyNoMatch(

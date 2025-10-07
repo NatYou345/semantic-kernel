@@ -8,8 +8,6 @@ using Microsoft.SemanticKernel.Agents.Extensions;
 
 namespace Microsoft.SemanticKernel.Agents;
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 /// <summary>
 /// Extensions for logging <see cref="AgentGroupChat"/> invocations.
 /// </summary>
@@ -61,7 +59,7 @@ internal static partial class AgentGroupChatLogMessages
     /// Logs <see cref="AgentGroupChat"/> selecting agent (started).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] Selecting agent: {StrategyType}.")]
     public static partial void LogAgentGroupChatSelectingAgent(
@@ -73,7 +71,7 @@ internal static partial class AgentGroupChatLogMessages
     /// Logs <see cref="AgentGroupChat"/> Unable to select agent.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Error,
         Message = "[{MethodName}] Unable to determine next agent.")]
     public static partial void LogAgentGroupChatNoAgentSelected(
@@ -85,7 +83,7 @@ internal static partial class AgentGroupChatLogMessages
     /// Logs <see cref="AgentGroupChat"/> selected agent (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 3,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Agent selected {AgentType}: {AgentId}/{AgentName} by {StrategyType}")]
     public static partial void LogAgentGroupChatSelectedAgent(
@@ -100,7 +98,7 @@ internal static partial class AgentGroupChatLogMessages
     /// Logs <see cref="AgentGroupChat"/> yield chat.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 4,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] Yield chat - IsComplete: {IsComplete}")]
     public static partial void LogAgentGroupChatYield(

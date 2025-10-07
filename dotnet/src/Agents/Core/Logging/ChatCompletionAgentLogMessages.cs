@@ -5,8 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.SemanticKernel.Agents;
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 /// <summary>
 /// Extensions for logging <see cref="ChatCompletionAgent"/> invocations.
 /// </summary>
@@ -35,7 +33,7 @@ internal static partial class ChatCompletionAgentLogMessages
     /// Logs <see cref="ChatCompletionAgent"/> invoked agent (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Agent {AgentId}/{AgentName} Invoked service {ServiceType} with message count: {MessageCount}.")]
     public static partial void LogAgentChatServiceInvokedAgent(
@@ -50,7 +48,7 @@ internal static partial class ChatCompletionAgentLogMessages
     /// Logs <see cref="ChatCompletionAgent"/> invoked streaming agent (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Agent {AgentId}/{AgentName} Invoked service {ServiceType}.")]
     public static partial void LogAgentChatServiceInvokedStreamingAgent(
