@@ -98,7 +98,7 @@
     <PackageVersion Include="Pinecone.Client" Version="3.1.0" />
     <PackageVersion Include="Prompty.Core" Version="0.2.3-beta" />
     <PackageVersion Include="PuppeteerSharp" Version="20.0.5" />
-    <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="9.0.0" />
+    <PackageVersion Include="System.Diagnostics.DiagnosticSource" Version="8.0.1" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.14.0" />
     <PackageVersion Include="System.IO.Packaging" Version="8.0.1" />
     <PackageVersion Include="System.Linq.AsyncEnumerable" Version="10.0.0" />
