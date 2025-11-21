@@ -5,8 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.SemanticKernel.Agents.Chat;
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 /// <summary>
 /// Extensions for logging <see cref="KernelFunctionSelectionStrategy"/> invocations.
 /// </summary>
@@ -35,7 +33,7 @@ internal static partial class KernelFunctionStrategyLogMessages
     /// Logs <see cref="KernelFunctionSelectionStrategy"/> invoked function (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Invoked function: {PluginName}.{FunctionName}: {ResultType}")]
     public static partial void LogKernelFunctionSelectionStrategyInvokedFunction(
