@@ -36,7 +36,6 @@ def test_init():
 
 
 class TestCodeBlockRendering:
-    @mark.asyncio
     async def test_it_throws_if_a_plugins_are_empty(self, kernel: Kernel):
         target = CodeBlock(
             content="functionName",
@@ -45,7 +44,6 @@ class TestCodeBlockRendering:
         with raises(CodeBlockRenderException, match="Function `functionName` not found"):
             await target.render_code(kernel, KernelArguments())
 
-    @mark.asyncio
     async def test_it_throws_if_a_function_doesnt_exist(self, kernel: Kernel):
         target = CodeBlock(
             content="functionName",
@@ -55,7 +53,6 @@ class TestCodeBlockRendering:
         with raises(CodeBlockRenderException, match="Function `functionName` not found"):
             await target.render_code(kernel, KernelArguments())
 
-    @mark.asyncio
     async def test_it_throws_if_a_function_call_throws(self, kernel: Kernel):
         @kernel_function(name="funcName")
         def invoke():
@@ -75,7 +72,6 @@ class TestCodeBlockRendering:
         with raises(CodeBlockRenderException, match="test.funcName"):
             await target.render_code(kernel, KernelArguments())
 
-    @mark.asyncio
     async def test_it_renders_code_block_consisting_of_just_a_var_block1(self, kernel: Kernel):
         code_block = CodeBlock(
             content="$var",
@@ -84,7 +80,6 @@ class TestCodeBlockRendering:
 
         assert result == "foo"
 
-    @mark.asyncio
     async def test_it_renders_code_block_consisting_of_just_a_val_block1(self, kernel: Kernel):
         code_block = CodeBlock(
             content="'ciao'",
@@ -93,7 +88,6 @@ class TestCodeBlockRendering:
 
         assert result == "ciao"
 
-    @mark.asyncio
     async def test_it_invokes_function_cloning_all_variables(self, kernel: Kernel):
         # Set up initial context variables
         arguments = KernelArguments(input="zero", var1="uno", var2="due")
@@ -142,7 +136,6 @@ class TestCodeBlockRendering:
         assert arguments["var1"] == "uno"
         assert arguments["var2"] == "due"
 
-    @mark.asyncio
     async def test_it_invokes_function_with_custom_variable(self, kernel: Kernel):
         # Define custom variable name and value
         VAR_NAME = "varName"
@@ -188,7 +181,6 @@ class TestCodeBlockRendering:
         # Check that the canary value matches the custom variable value
         assert canary == VAR_VALUE
 
-    @mark.asyncio
     async def test_it_invokes_function_with_custom_value(self, kernel: Kernel):
         # Define a value to be used in the test
         VALUE = "value"
@@ -228,7 +220,6 @@ class TestCodeBlockRendering:
         # Check that the canary value matches the value
         assert canary == VALUE
 
-    @mark.asyncio
     async def test_it_invokes_function_with_multiple_arguments(self, kernel: Kernel):
         # Define a value to be used in the test
         VALUE = "value"
@@ -269,7 +260,6 @@ class TestCodeBlockRendering:
         # Check that the canary value matches the value
         assert canary == f"{VALUE} arg1 arg2"
 
-    @mark.asyncio
     async def test_it_invokes_function_with_only_named_arguments(self, kernel: Kernel):
         code_block = CodeBlock(
             content=" ",
@@ -306,7 +296,6 @@ class TestCodeBlockRendering:
         # Check that the canary value matches the value
         assert canary == "arg1 arg2"
 
-    @mark.asyncio
     async def test_it_fails_on_function_without_args(self, kernel: Kernel):
         code_block = CodeBlock(
             content=" ",
@@ -494,3 +483,99 @@ def test_edge_cases(case, result):
 def test_no_tokens():
     with raises(CodeBlockTokenError):
         CodeBlock(content="", tokens=[])
+
+
+class TestNonStringArguments:
+    """Test that non-string KernelArguments are preserved when passed to functions in templates."""
+
+    async def test_function_receives_int_type(self, kernel: Kernel):
+        """Test that an integer argument is passed as int, not converted to string."""
+        received_value = None
+        received_type = None
+
+        @kernel_function(name="check_type")
+        def check_type(value: int):
+            nonlocal received_value, received_type
+            received_value = value
+            received_type = type(value)
+            return f"Received {type(value).__name__}: {value}"
+
+        function = KernelFunctionFromMethod(method=check_type, plugin_name="test")
+        kernel.add_plugin(KernelPlugin(name="test", functions=[function]))
+
+        code_block = CodeBlock(content="test.check_type value=$my_int")
+        arguments = KernelArguments(my_int=42)
+
+        await code_block.render_code(kernel, arguments)
+
+        assert received_value == 42
+        assert isinstance(received_value, int), f"Expected int but got {received_type}"
+
+    async def test_function_receives_list_type(self, kernel: Kernel):
+        """Test that a list argument is passed as list, not converted to string."""
+        received_value = None
+        received_type = None
+
+        @kernel_function(name="check_type")
+        def check_type(items: list):
+            nonlocal received_value, received_type
+            received_value = items
+            received_type = type(items)
+            return f"Received {len(items)} items"
+
+        function = KernelFunctionFromMethod(method=check_type, plugin_name="test")
+        kernel.add_plugin(KernelPlugin(name="test", functions=[function]))
+
+        code_block = CodeBlock(content="test.check_type items=$my_list")
+        arguments = KernelArguments(my_list=[1, 2, 3])
+
+        await code_block.render_code(kernel, arguments)
+
+        assert received_value == [1, 2, 3]
+        assert isinstance(received_value, list), f"Expected list but got {received_type}"
+
+    async def test_function_receives_dict_type(self, kernel: Kernel):
+        """Test that a dict argument is passed as dict, not converted to string."""
+        received_value = None
+        received_type = None
+
+        @kernel_function(name="check_type")
+        def check_type(data: dict):
+            nonlocal received_value, received_type
+            received_value = data
+            received_type = type(data)
+            return f"Received dict with keys: {list(data.keys())}"
+
+        function = KernelFunctionFromMethod(method=check_type, plugin_name="test")
+        kernel.add_plugin(KernelPlugin(name="test", functions=[function]))
+
+        code_block = CodeBlock(content="test.check_type data=$my_dict")
+        arguments = KernelArguments(my_dict={"key": "value", "num": 123})
+
+        await code_block.render_code(kernel, arguments)
+
+        assert received_value == {"key": "value", "num": 123}
+        assert isinstance(received_value, dict), f"Expected dict but got {received_type}"
+
+    async def test_named_arg_with_non_string_type(self, kernel: Kernel):
+        """Test that named arguments with non-string types are preserved."""
+        received_count = None
+        received_type = None
+
+        @kernel_function(name="process")
+        def process(text: str, count: int):
+            nonlocal received_count, received_type
+            received_count = count
+            received_type = type(count)
+            return f"{text} x {count}"
+
+        function = KernelFunctionFromMethod(method=process, plugin_name="test")
+        kernel.add_plugin(KernelPlugin(name="test", functions=[function]))
+
+        code_block = CodeBlock(content="test.process 'hello' count=$repetitions")
+        arguments = KernelArguments(repetitions=5)
+
+        await code_block.render_code(kernel, arguments)
+
+        assert received_count == 5
+        assert isinstance(received_count, int), f"Expected int but got {received_type}"

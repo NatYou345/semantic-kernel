@@ -415,6 +415,9 @@ FodyWeavers.xsd
 *.iml
 *.iws
 
+# VS Code
+.vscode/
+
 .env
 certs/
 launchSettings.json
@@ -439,7 +442,6 @@ __pycache__/
 .mypy_cache/
 __pypackages__/
 .pdm.toml
-global.json
 
 # doxfx
 **/DROP/
@@ -497,3 +499,6 @@ swa-cli.config.json
 
 # kiota workspace files
 **/.kiota
+
+# dapr extension files
+**/dapr.yaml

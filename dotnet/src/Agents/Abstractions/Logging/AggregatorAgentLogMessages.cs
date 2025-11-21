@@ -5,8 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Microsoft.SemanticKernel.Agents;
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 /// <summary>
 /// Extensions for logging <see cref="AggregatorAgent"/> invocations.
 /// </summary>
@@ -15,6 +13,7 @@ namespace Microsoft.SemanticKernel.Agents;
 /// generate logging code at compile time to achieve optimized code.
 /// </remarks>
 [ExcludeFromCodeCoverage]
+[Experimental("SKEXP0110")]
 internal static partial class AggregatorAgentLogMessages
 {
     /// <summary>
@@ -33,7 +32,7 @@ internal static partial class AggregatorAgentLogMessages
     /// Logs <see cref="AggregatorAgent"/> created channel (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Created channel {ChannelType} ({ChannelMode}) with: {AgentChatType}.")]
     public static partial void LogAggregatorAgentCreatedChannel(
@@ -47,7 +46,7 @@ internal static partial class AggregatorAgentLogMessages
     /// Logs <see cref="AggregatorAgent"/> restoring serialized channel (started).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] Restoring assistant channel for {ChannelType}.")]
     public static partial void LogOpenAIAssistantAgentRestoringChannel(
@@ -59,7 +58,7 @@ internal static partial class AggregatorAgentLogMessages
     /// Logs <see cref="AggregatorAgent"/> restored serialized channel (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 3,
         Level = LogLevel.Information,
         Message = "[{MethodName}] Restored assistant channel for {ChannelType}.")]
     public static partial void LogOpenAIAssistantAgentRestoredChannel(

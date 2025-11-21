@@ -1,16 +1,17 @@
 # Copyright (c) Microsoft. All rights reserved.
 
+import json
 import logging
 import time
 from abc import abstractmethod
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from copy import copy, deepcopy
 from inspect import isasyncgen, isgenerator
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry import metrics, trace
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from semantic_kernel.filters.filter_types import FilterTypes
 from semantic_kernel.filters.functions.function_invocation_context import FunctionInvocationContext
@@ -30,6 +31,12 @@ from semantic_kernel.prompt_template.const import (
 from semantic_kernel.prompt_template.handlebars_prompt_template import HandlebarsPromptTemplate
 from semantic_kernel.prompt_template.jinja2_prompt_template import Jinja2PromptTemplate
 from semantic_kernel.prompt_template.kernel_prompt_template import KernelPromptTemplate
+from semantic_kernel.prompt_template.prompt_template_base import PromptTemplateBase
+from semantic_kernel.utils.telemetry.model_diagnostics import function_tracer
+from semantic_kernel.utils.telemetry.model_diagnostics.gen_ai_attributes import TOOL_CALL_ARGUMENTS, TOOL_CALL_RESULT
+
+from ..contents.chat_message_content import ChatMessageContent
+from ..contents.text_content import TextContent
 
 if TYPE_CHECKING:
     from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
@@ -37,7 +44,6 @@ if TYPE_CHECKING:
     from semantic_kernel.functions.kernel_function_from_method import KernelFunctionFromMethod
     from semantic_kernel.functions.kernel_function_from_prompt import KernelFunctionFromPrompt
     from semantic_kernel.kernel import Kernel
-    from semantic_kernel.prompt_template.prompt_template_base import PromptTemplateBase
     from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
 
 # Logger, tracer and meter for observability
@@ -46,7 +52,7 @@ tracer: trace.Tracer = trace.get_tracer(__name__)
 meter: metrics.Meter = metrics.get_meter_provider().get_meter(__name__)
 MEASUREMENT_FUNCTION_TAG_NAME: str = "semantic_kernel.function.name"
 
-TEMPLATE_FORMAT_MAP = {
+TEMPLATE_FORMAT_MAP: dict[TEMPLATE_FORMAT_TYPES, type[PromptTemplateBase]] = {
     KERNEL_TEMPLATE_FORMAT_NAME: KernelPromptTemplate,
     HANDLEBARS_TEMPLATE_FORMAT_NAME: HandlebarsPromptTemplate,
     JINJA2_TEMPLATE_FORMAT_NAME: Jinja2PromptTemplate,
@@ -92,10 +98,31 @@ class KernelFunction(KernelBaseModel):
 
     metadata: KernelFunctionMetadata
 
-    invocation_duration_histogram: metrics.Histogram = Field(default_factory=_create_function_duration_histogram)
-    streaming_duration_histogram: metrics.Histogram = Field(
-        default_factory=_create_function_streaming_duration_histogram
+    invocation_duration_histogram: metrics.Histogram = Field(
+        default_factory=_create_function_duration_histogram, exclude=True
     )
+    streaming_duration_histogram: metrics.Histogram = Field(
+        default_factory=_create_function_streaming_duration_histogram, exclude=True
+    )
+
+    def __deepcopy__(self, memo: dict[int, Any] | None = None) -> "KernelFunction":
+        """Create a deep copy of the kernel function, recreating uncopyable fields."""
+        if memo is None:
+            memo = {}
+        if id(self) in memo:
+            return memo[id(self)]
+
+        # Use model_copy to create a shallow copy of the pydantic model
+        # this is the recommended way to copy pydantic models
+        new_obj = self.model_copy(deep=False)
+        memo[id(self)] = new_obj
+
+        # now deepcopy the fields that are not the histograms
+        for key, value in self.__dict__.items():
+            if key not in ("invocation_duration_histogram", "streaming_duration_histogram"):
+                setattr(new_obj, key, deepcopy(value, memo))
+
+        return new_obj
 
     @classmethod
     def from_prompt(
@@ -108,7 +135,7 @@ class KernelFunction(KernelBaseModel):
         prompt_template: "PromptTemplateBase | None " = None,
         prompt_template_config: "PromptTemplateConfig | None" = None,
         prompt_execution_settings: (
-            "PromptExecutionSettings | list[PromptExecutionSettings] | dict[str, PromptExecutionSettings] | None"
+            "PromptExecutionSettings | Sequence[PromptExecutionSettings] | Mapping[str, PromptExecutionSettings] | None"
         ) = None,
     ) -> "KernelFunctionFromPrompt":
         """Create a new instance of the KernelFunctionFromPrompt class."""
@@ -180,7 +207,7 @@ class KernelFunction(KernelBaseModel):
         self,
         kernel: "Kernel",
         arguments: "KernelArguments | None" = None,
-        metadata: dict[str, Any] = {},
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> FunctionResult | None:
         """Invoke the function with the given arguments.
@@ -214,7 +241,7 @@ class KernelFunction(KernelBaseModel):
         self,
         kernel: "Kernel",
         arguments: "KernelArguments | None" = None,
-        metadata: dict[str, Any] = {},
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> "FunctionResult | None":
         """Invoke the function with the given arguments.
@@ -234,9 +261,12 @@ class KernelFunction(KernelBaseModel):
         _rebuild_function_invocation_context()
         function_context = FunctionInvocationContext(function=self, kernel=kernel, arguments=arguments)
 
-        with tracer.start_as_current_span(self.fully_qualified_name) as current_span:
+        with function_tracer.start_as_current_span(tracer, self, metadata) as current_span:
             KernelFunctionLogMessages.log_function_invoking(logger, self.fully_qualified_name)
             KernelFunctionLogMessages.log_function_arguments(logger, arguments)
+
+            if function_tracer.are_sensitive_events_enabled():
+                current_span.set_attribute(TOOL_CALL_ARGUMENTS, arguments.dumps())
 
             attributes = {MEASUREMENT_FUNCTION_TAG_NAME: self.fully_qualified_name}
             starting_time_stamp = time.perf_counter()
@@ -249,6 +279,13 @@ class KernelFunction(KernelBaseModel):
 
                 KernelFunctionLogMessages.log_function_invoked_success(logger, self.fully_qualified_name)
                 KernelFunctionLogMessages.log_function_result_value(logger, function_context.result)
+
+                if function_tracer.are_sensitive_events_enabled():
+                    try:
+                        result = str(function_context.result.value) if function_context.result else None
+                    except Exception as e:
+                        result = str(e)
+                    current_span.set_attribute(TOOL_CALL_RESULT, result)
 
                 return function_context.result
             except Exception as e:
@@ -272,7 +309,7 @@ class KernelFunction(KernelBaseModel):
         self,
         kernel: "Kernel",
         arguments: "KernelArguments | None" = None,
-        metadata: dict[str, Any] = {},
+        metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> "AsyncGenerator[FunctionResult | list[StreamingContentMixin | Any], Any]":
         """Invoke a stream async function with the given arguments.
@@ -292,11 +329,16 @@ class KernelFunction(KernelBaseModel):
         if arguments is None:
             arguments = KernelArguments(**kwargs)
         _rebuild_function_invocation_context()
-        function_context = FunctionInvocationContext(function=self, kernel=kernel, arguments=arguments)
+        function_context = FunctionInvocationContext(
+            function=self, kernel=kernel, arguments=arguments, is_streaming=True
+        )
 
-        with tracer.start_as_current_span(self.fully_qualified_name) as current_span:
+        with function_tracer.start_as_current_span(tracer, self, metadata) as current_span:
             KernelFunctionLogMessages.log_function_streaming_invoking(logger, self.fully_qualified_name)
             KernelFunctionLogMessages.log_function_arguments(logger, arguments)
+
+            if function_tracer.are_sensitive_events_enabled():
+                current_span.set_attribute(TOOL_CALL_ARGUMENTS, arguments.dumps())
 
             attributes = {MEASUREMENT_FUNCTION_TAG_NAME: self.fully_qualified_name}
             starting_time_stamp = time.perf_counter()
@@ -307,15 +349,27 @@ class KernelFunction(KernelBaseModel):
                 )
                 await stack(function_context)
 
+                function_results: list[Any] = []
                 if function_context.result is not None:
                     if isasyncgen(function_context.result.value):
                         async for partial in function_context.result.value:
+                            function_results.append(partial)
                             yield partial
                     elif isgenerator(function_context.result.value):
                         for partial in function_context.result.value:
+                            function_results.append(partial)
                             yield partial
                     else:
+                        function_results.append(function_context.result.value)
                         yield function_context.result
+
+                if function_tracer.are_sensitive_events_enabled():
+                    results: list[str] = []
+                    try:
+                        results.append(str(function_results))
+                    except Exception as e:
+                        results.append(str(e))
+                    current_span.set_attribute(TOOL_CALL_RESULT, json.dumps(results))
             except Exception as e:
                 self._handle_exception(current_span, e, attributes)
                 raise e
@@ -354,3 +408,76 @@ class KernelFunction(KernelBaseModel):
         current_span.set_status(trace.StatusCode.ERROR, description=str(exception))
 
         KernelFunctionLogMessages.log_function_error(logger, exception)
+
+    def as_agent_framework_tool(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        kernel: "Kernel | None" = None,
+    ) -> Any:
+        """Convert the function to an agent framework tool.
+
+        Args:
+            name: The name of the tool, if None, the function name is used.
+            description: The description of the tool, if None, the tool description is used.
+            kernel: The kernel to use, if None, a kernel is created.
+
+        Returns:
+            AIFunction: The agent framework tool.
+        """
+        import json
+
+        from pydantic import Field, create_model
+
+        from semantic_kernel.kernel import Kernel
+
+        try:
+            from agent_framework import AIFunction
+
+        except ImportError as e:
+            raise ImportError(
+                "agent_framework is not installed. Please install it with 'pip install agent-framework-core'"
+            ) from e
+
+        if not kernel:
+            kernel = Kernel()
+        name = name or self.name
+        description = description or self.description
+        fields = {}
+        for param in self.parameters:
+            if param.include_in_function_choices:
+                if param.default_value is not None:
+                    fields[param.name] = (
+                        param.type_,
+                        Field(description=param.description, default=param.default_value),
+                    )
+                fields[param.name] = (param.type_, Field(description=param.description))
+        input_model = create_model("InputModel", **fields)  # type: ignore
+
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            result = await self.invoke(kernel, *args, **kwargs)
+            if result and result.value is not None:
+                if isinstance(result.value, list):
+                    results: list[Any] = []
+                    for value in result.value:
+                        if isinstance(value, ChatMessageContent):
+                            results.append(str(value))
+                            continue
+                        if isinstance(value, TextContent):
+                            results.append(value.text)
+                            continue
+                        if isinstance(value, BaseModel):
+                            results.append(value.model_dump())
+                            continue
+                        results.append(value)
+                    return json.dumps(results) if len(results) > 1 else json.dumps(results[0])
+                return json.dumps(result.value)
+            return "The function did not return a result."
+
+        return AIFunction(
+            name=name,
+            description=description,
+            input_model=input_model,
+            func=wrapper,
+        )

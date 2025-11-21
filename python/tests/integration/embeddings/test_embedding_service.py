@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from semantic_kernel.connectors.ai.embeddings.embedding_generator_base import EmbeddingGeneratorBase
+from semantic_kernel.connectors.ai.embedding_generator_base import EmbeddingGeneratorBase
 from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
 from tests.integration.embeddings.test_embedding_service_base import (
     EmbeddingServiceTestBase,
@@ -59,7 +59,10 @@ pytestmark = pytest.mark.parametrize(
             "ollama",
             {},
             768,
-            marks=pytest.mark.skipif(not ollama_setup, reason="Ollama environment variables not set"),
+            marks=(
+                pytest.mark.skipif(not ollama_setup, reason="Ollama not setup"),
+                pytest.mark.ollama,
+            ),
             id="ollama",
         ),
         pytest.param(
@@ -98,7 +101,6 @@ pytestmark = pytest.mark.parametrize(
 )
 
 
-@pytest.mark.asyncio(scope="module")
 class TestEmbeddingService(EmbeddingServiceTestBase):
     """Test embedding service with memory.
 

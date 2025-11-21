@@ -80,6 +80,20 @@ def test_initialization(mock_process, mock_kernel, build_model):
     assert local_process.external_event_queue.empty()
 
 
+def test_initialization_max_supersteps(mock_process, mock_kernel, build_model):
+    # Act
+    local_process = LocalProcess(process=mock_process, kernel=mock_kernel, max_supersteps=10)
+
+    # Assert
+    assert local_process.process == mock_process
+    assert local_process.kernel == mock_kernel
+    assert not local_process.initialize_task
+    assert len(local_process.step_infos) == len(mock_process.steps)
+    assert local_process.step_infos[0] == mock_process.steps[0]
+    assert local_process.external_event_queue.empty()
+    assert local_process.max_supersteps == 10
+
+
 def test_ensure_initialized(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -110,7 +124,6 @@ def test_ensure_initialized_already_done(mock_process, mock_kernel, build_model)
         mock_initialize_process.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_start(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -131,7 +144,6 @@ async def test_start(mock_process, mock_kernel, build_model):
         assert isinstance(local_process.process_task, asyncio.Task)
 
 
-@pytest.mark.asyncio
 async def test_run_once(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -150,7 +162,6 @@ async def test_run_once(mock_process, mock_kernel, build_model):
         assert isinstance(local_process.process_task, asyncio.Task)
 
 
-@pytest.mark.asyncio
 async def test_stop_running_task(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -163,7 +174,6 @@ async def test_stop_running_task(mock_process, mock_kernel, build_model):
     assert local_process.process_task.cancelled()
 
 
-@pytest.mark.asyncio
 async def test_stop_no_running_task(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -176,7 +186,6 @@ async def test_stop_no_running_task(mock_process, mock_kernel, build_model):
     assert local_process.process_task is None  # No action should be taken
 
 
-@pytest.mark.asyncio
 async def test_send_message(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -190,7 +199,6 @@ async def test_send_message(mock_process, mock_kernel, build_model):
     assert local_process.external_event_queue.get() == process_event
 
 
-@pytest.mark.asyncio
 async def test_send_message_with_invalid_event(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -200,7 +208,6 @@ async def test_send_message_with_invalid_event(mock_process, mock_kernel, build_
         await local_process.send_message(None)
 
 
-@pytest.mark.asyncio
 async def test_run_once_with_valid_event(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -223,7 +230,6 @@ async def test_run_once_with_valid_event(mock_process, mock_kernel, build_model)
         assert local_process.process_task.done()
 
 
-@pytest.mark.asyncio
 async def test_run_once_with_no_event_raises_exception(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -233,7 +239,6 @@ async def test_run_once_with_no_event_raises_exception(mock_process, mock_kernel
         await local_process.run_once(None)
 
 
-@pytest.mark.asyncio
 async def test_run_once_without_process_task(mock_process, mock_kernel, build_model):
     # Arrange
     local_process = LocalProcess(process=mock_process, kernel=mock_kernel)
@@ -280,13 +285,13 @@ def test_initialize_process(mock_process, mock_kernel, build_model):
                 mock_local_step_init.assert_called_with(
                     step_info=step_info,
                     kernel=mock_kernel,
+                    factories={},
                     parent_process_id=local_process.id,
                 )
 
         assert len(local_process.steps) == len(mock_process.steps)
 
 
-@pytest.mark.asyncio
 async def test_handle_message_without_target_event_id(mock_process_with_output_edges, build_model):
     # Arrange
     local_process = mock_process_with_output_edges
@@ -301,7 +306,6 @@ async def test_handle_message_without_target_event_id(mock_process_with_output_e
     assert "The target event id must be specified" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
 async def test_handle_message_with_valid_event_id(mock_process_with_output_edges, build_model):
     # Arrange
     local_process = mock_process_with_output_edges
@@ -321,7 +325,7 @@ async def test_handle_message_with_valid_event_id(mock_process_with_output_edges
         assert isinstance(event, KernelProcessEvent)
         assert event.id == "valid_event_id"
         assert event.data == message.target_event_data
-        assert event.visibility == KernelProcessEventVisibility.Internal.value
+        assert event.visibility == KernelProcessEventVisibility.Internal
 
 
 END_PROCESS_ID = "END"

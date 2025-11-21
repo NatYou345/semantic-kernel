@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft. All rights reserved.
 import logging
+from collections.abc import MutableMapping, MutableSequence, Sequence
 from typing import TypeVar
 
 from pydantic import Field, field_validator, model_validator
@@ -14,6 +15,8 @@ from semantic_kernel.prompt_template.input_variable import InputVariable
 PromptExecutionSettingsT = TypeVar("PromptExecutionSettingsT", bound=PromptExecutionSettings)
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T", bound="PromptTemplateConfig")
 
 
 class PromptTemplateConfig(KernelBaseModel):
@@ -36,9 +39,9 @@ class PromptTemplateConfig(KernelBaseModel):
     description: str | None = ""
     template: str | None = None
     template_format: TEMPLATE_FORMAT_TYPES = KERNEL_TEMPLATE_FORMAT_NAME
-    input_variables: list[InputVariable] = Field(default_factory=list)
+    input_variables: MutableSequence[InputVariable] = Field(default_factory=list)
     allow_dangerously_set_content: bool = False
-    execution_settings: dict[str, PromptExecutionSettings] = Field(default_factory=dict)
+    execution_settings: MutableMapping[str, PromptExecutionSettings] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def check_input_variables(self):
@@ -51,15 +54,18 @@ class PromptTemplateConfig(KernelBaseModel):
     @field_validator("execution_settings", mode="before")
     @classmethod
     def rewrite_execution_settings(
-        cls,
-        settings: PromptExecutionSettings | list[PromptExecutionSettings] | dict[str, PromptExecutionSettings] | None,
-    ) -> dict[str, PromptExecutionSettings]:
+        cls: type[_T],
+        settings: PromptExecutionSettings
+        | Sequence[PromptExecutionSettings]
+        | MutableMapping[str, PromptExecutionSettings]
+        | None,
+    ) -> MutableMapping[str, PromptExecutionSettings]:
         """Rewrite execution settings to a dictionary."""
         if not settings:
             return {}
         if isinstance(settings, PromptExecutionSettings):
             return {settings.service_id or DEFAULT_SERVICE_NAME: settings}
-        if isinstance(settings, list):
+        if isinstance(settings, Sequence):
             return {s.service_id or DEFAULT_SERVICE_NAME: s for s in settings}
         return settings
 
@@ -70,21 +76,21 @@ class PromptTemplateConfig(KernelBaseModel):
         self.execution_settings[settings.service_id or DEFAULT_SERVICE_NAME] = settings
         logger.warning("Execution settings already exist and overwrite is set to False")
 
-    def get_kernel_parameter_metadata(self) -> list[KernelParameterMetadata]:
+    def get_kernel_parameter_metadata(self) -> Sequence[KernelParameterMetadata]:
         """Get the kernel parameter metadata for the input variables."""
         return [
             KernelParameterMetadata(
                 name=variable.name,
                 description=variable.description,
                 default_value=variable.default,
-                type_=variable.json_schema,  # TODO (moonbox3): update to handle complex JSON schemas
+                type_=variable.json_schema,  # TODO (moonbox3): update to handle complex JSON schemas # type: ignore
                 is_required=variable.is_required,
             )
             for variable in self.input_variables
         ]
 
     @classmethod
-    def from_json(cls, json_str: str) -> "PromptTemplateConfig":
+    def from_json(cls: type[_T], json_str: str) -> _T:
         """Create a PromptTemplateConfig instance from a JSON string."""
         if not json_str:
             raise ValueError("json_str is empty")
@@ -98,15 +104,15 @@ class PromptTemplateConfig(KernelBaseModel):
 
     @classmethod
     def restore(
-        cls,
+        cls: type[_T],
         name: str,
         description: str,
         template: str,
         template_format: TEMPLATE_FORMAT_TYPES = KERNEL_TEMPLATE_FORMAT_NAME,
-        input_variables: list[InputVariable] = [],
-        execution_settings: dict[str, PromptExecutionSettings] = {},
+        input_variables: MutableSequence[InputVariable] | None = None,
+        execution_settings: MutableMapping[str, PromptExecutionSettings] | None = None,
         allow_dangerously_set_content: bool = False,
-    ) -> "PromptTemplateConfig":
+    ) -> _T:
         """Restore a PromptTemplateConfig instance from the specified parameters.
 
         Args:
@@ -126,7 +132,7 @@ class PromptTemplateConfig(KernelBaseModel):
             description=description,
             template=template,
             template_format=template_format,
-            input_variables=input_variables,
-            execution_settings=execution_settings,
+            input_variables=input_variables or [],
+            execution_settings=execution_settings or {},
             allow_dangerously_set_content=allow_dangerously_set_content,
         )

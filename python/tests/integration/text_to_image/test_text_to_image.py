@@ -18,16 +18,19 @@ pytestmark = pytest.mark.parametrize(
             "azure_openai",
             "A cute tuxedo cat driving a race car.",
             id="azure_openai",
+            marks=[
+                pytest.mark.xfail(
+                    reason="Temporary failure due to Internal Server Error (500) from Azure OpenAI.",
+                ),
+            ],
         ),
     ],
 )
 
 
-@pytest.mark.asyncio(scope="module")
 class TestTextToImage(TextToImageTestBase):
     """Test text-to-image services."""
 
-    @pytest.mark.asyncio
     async def test_text_to_image(
         self,
         services: dict[str, TextToImageClientBase],

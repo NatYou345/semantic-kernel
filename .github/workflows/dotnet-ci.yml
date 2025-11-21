@@ -19,18 +19,19 @@ jobs:
         fail-fast: false
         matrix:
           include:
-          - { os: ubuntu-latest, dotnet: '8.0', configuration: Debug }
-          - { os: ubuntu-latest, dotnet: '8.0', configuration: Release }
+          - { os: ubuntu-latest, dotnet: '9.0', configuration: Debug }
+          - { os: ubuntu-latest, dotnet: '9.0', configuration: Release }
 
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         clean: true
+        persist-credentials: false
 
     - name: Find solutions
       shell: bash
-      run: echo "solutions=$(find ./ -type f -name "*.sln" | tr '\n' ' ')" >> $GITHUB_ENV
+      run: echo "solutions=$(find ./ -type f -name "*.slnx" | tr '\n' ' ')" >> $GITHUB_ENV
 
     - name: Pull container dotnet/sdk:${{ matrix.dotnet }}
       run: |
@@ -66,14 +67,15 @@ jobs:
         matrix:
           os: [windows-latest]
           configuration: [Release, Debug]
-          dotnet-version: ['8.0.x']
+          dotnet-version: ['9.0.x']
     runs-on: ${{ matrix.os }}
     env:
       NUGET_CERT_REVOCATION_MODE: offline
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         clean: true
+        persist-credentials: false
 
     - name: Setup .NET SDK ${{ matrix.dotnet-version }}
       uses: actions/setup-dotnet@v4
@@ -92,7 +94,7 @@ jobs:
 
     - name: Find solutions
       shell: bash
-      run: echo "solutions=$(find ./dotnet -type f -name "*.sln" | tr '\n' ' ')" >> $GITHUB_ENV
+      run: echo "solutions=$(find ./dotnet -type f -name "*.slnx" | tr '\n' ' ')" >> $GITHUB_ENV
 
     - name: Restore dependencies
       shell: bash

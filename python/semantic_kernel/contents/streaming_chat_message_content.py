@@ -1,10 +1,15 @@
 # Copyright (c) Microsoft. All rights reserved.
 
 from enum import Enum
-from typing import Any, Union, overload
+from typing import Annotated, Any, overload
 from xml.etree.ElementTree import Element  # nosec
 
+from pydantic import Field
+
+from semantic_kernel.contents.audio_content import AudioContent
+from semantic_kernel.contents.binary_content import BinaryContent
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.const import DISCRIMINATOR_FIELD
 from semantic_kernel.contents.function_call_content import FunctionCallContent
 from semantic_kernel.contents.function_result_content import FunctionResultContent
 from semantic_kernel.contents.image_content import ImageContent
@@ -14,15 +19,19 @@ from semantic_kernel.contents.streaming_file_reference_content import StreamingF
 from semantic_kernel.contents.streaming_text_content import StreamingTextContent
 from semantic_kernel.contents.utils.author_role import AuthorRole
 from semantic_kernel.contents.utils.finish_reason import FinishReason
+from semantic_kernel.contents.utils.hashing import make_hashable
 from semantic_kernel.exceptions import ContentAdditionException
 
-ITEM_TYPES = Union[
-    ImageContent,
-    StreamingTextContent,
-    FunctionCallContent,
-    FunctionResultContent,
-    StreamingFileReferenceContent,
-    StreamingAnnotationContent,
+STREAMING_CMC_ITEM_TYPES = Annotated[
+    BinaryContent
+    | AudioContent
+    | ImageContent
+    | FunctionResultContent
+    | FunctionCallContent
+    | StreamingTextContent
+    | StreamingAnnotationContent
+    | StreamingFileReferenceContent,
+    Field(discriminator=DISCRIMINATOR_FIELD),
 ]
 
 
@@ -51,11 +60,17 @@ class StreamingChatMessageContent(ChatMessageContent, StreamingContentMixin):
         __add__: Combines two StreamingChatMessageContent instances.
     """
 
+    function_invoke_attempt: int | None = Field(
+        default=0,
+        description="Tracks the current attempt count for automatically invoking functions. "
+        "This value increments with each subsequent automatic invocation attempt.",
+    )
+
     @overload
     def __init__(
         self,
         role: AuthorRole,
-        items: list[ITEM_TYPES],
+        items: list[STREAMING_CMC_ITEM_TYPES],
         choice_index: int,
         name: str | None = None,
         inner_content: Any | None = None,
@@ -63,6 +78,7 @@ class StreamingChatMessageContent(ChatMessageContent, StreamingContentMixin):
         finish_reason: FinishReason | None = None,
         ai_model_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        function_invoke_attempt: int | None = None,
     ) -> None: ...
 
     @overload
@@ -77,13 +93,14 @@ class StreamingChatMessageContent(ChatMessageContent, StreamingContentMixin):
         finish_reason: FinishReason | None = None,
         ai_model_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        function_invoke_attempt: int | None = None,
     ) -> None: ...
 
     def __init__(  # type: ignore
         self,
         role: AuthorRole,
         choice_index: int,
-        items: list[ITEM_TYPES] | None = None,
+        items: list[STREAMING_CMC_ITEM_TYPES] | None = None,
         content: str | None = None,
         inner_content: Any | None = None,
         name: str | None = None,
@@ -91,26 +108,30 @@ class StreamingChatMessageContent(ChatMessageContent, StreamingContentMixin):
         finish_reason: FinishReason | None = None,
         ai_model_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        function_invoke_attempt: int | None = None,
     ):
         """Create a new instance of StreamingChatMessageContent.
 
         Args:
-            role: ChatRole - The role of the chat message.
-            choice_index: int - The index of the choice that generated this response.
-            items: list[TextContent, FunctionCallContent, FunctionResultContent, ImageContent] - The content.
-            content: str - The text of the response.
-            inner_content: Optional[Any] - The inner content of the response,
+            role: The role of the chat message.
+            choice_index: The index of the choice that generated this response.
+            items: The content.
+            content: The text of the response.
+            inner_content: The inner content of the response,
                 this should hold all the information from the response so even
                 when not creating a subclass a developer can leverage the full thing.
-            name: Optional[str] - The name of the response.
-            encoding: Optional[str] - The encoding of the text.
-            finish_reason: Optional[FinishReason] - The reason the response was finished.
-            metadata: Dict[str, Any] - Any metadata that should be attached to the response.
-            ai_model_id: Optional[str] - The id of the AI model that generated this response.
+            name: The name of the response.
+            encoding: The encoding of the text.
+            finish_reason: The reason the response was finished.
+            metadata: Any metadata that should be attached to the response.
+            ai_model_id: The id of the AI model that generated this response.
+            function_invoke_attempt: Tracks the current attempt count for automatically
+                invoking functions. This value increments with each subsequent automatic invocation attempt.
         """
         kwargs: dict[str, Any] = {
             "role": role,
             "choice_index": choice_index,
+            "function_invoke_attempt": function_invoke_attempt,
         }
         if encoding:
             kwargs["encoding"] = encoding
@@ -180,6 +201,8 @@ class StreamingChatMessageContent(ChatMessageContent, StreamingContentMixin):
             metadata=self.metadata | other.metadata,
             encoding=self.encoding,
             finish_reason=self.finish_reason or other.finish_reason,
+            function_invoke_attempt=self.function_invoke_attempt,
+            name=self.name or other.name,
         )
 
     def to_element(self) -> "Element":
@@ -207,6 +230,7 @@ class StreamingChatMessageContent(ChatMessageContent, StreamingContentMixin):
 
     def __hash__(self) -> int:
         """Return the hash of the streaming chat message content."""
+        hashable_items = [make_hashable(item) for item in self.items] if self.items else []
         return hash((
             self.tag,
             self.role,
@@ -214,5 +238,6 @@ class StreamingChatMessageContent(ChatMessageContent, StreamingContentMixin):
             self.encoding,
             self.finish_reason,
             self.choice_index,
-            *self.items,
+            self.function_invoke_attempt,
+            *hashable_items,
         ))

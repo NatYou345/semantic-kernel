@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft. All rights reserved.
 
+import json
 from collections.abc import AsyncGenerator
 from functools import reduce
 from unittest.mock import ANY, MagicMock, patch
@@ -13,8 +14,7 @@ from semantic_kernel.contents.streaming_text_content import StreamingTextContent
 from semantic_kernel.exceptions.service_exceptions import ServiceResponseException
 from semantic_kernel.utils.telemetry.model_diagnostics import gen_ai_attributes
 from semantic_kernel.utils.telemetry.model_diagnostics.decorators import (
-    TEXT_STREAMING_COMPLETION_OPERATION,
-    _messages_to_openai_format,
+    TEXT_COMPLETION_OPERATION,
     trace_streaming_text_completion,
 )
 from tests.unit.utils.model_diagnostics.conftest import MockTextCompletion
@@ -68,10 +68,11 @@ pytestmark = pytest.mark.parametrize(
 )
 
 
-@pytest.mark.asyncio
+@patch("semantic_kernel.utils.telemetry.model_diagnostics.decorators.logger")
 @patch("opentelemetry.trace.INVALID_SPAN")  # When no tracer provider is available, the span will be an INVALID_SPAN
 async def test_trace_streaming_text_completion(
     mock_span,
+    mock_logger,
     execution_settings,
     mock_response,
     prompt,
@@ -97,7 +98,7 @@ async def test_trace_streaming_text_completion(
 
         # Before the call to the model
         mock_span.set_attributes.assert_called_with({
-            gen_ai_attributes.OPERATION: TEXT_STREAMING_COMPLETION_OPERATION,
+            gen_ai_attributes.OPERATION: TEXT_COMPLETION_OPERATION,
             gen_ai_attributes.SYSTEM: MockTextCompletion.MODEL_PROVIDER_NAME,
             gen_ai_attributes.MODEL: text_completion.ai_model_id,
         })
@@ -118,8 +119,12 @@ async def test_trace_streaming_text_completion(
         if execution_settings.extension_data.get("top_p") is not None:
             mock_span.set_attribute.assert_any_call(gen_ai_attributes.TOP_P, execution_settings.extension_data["top_p"])
 
-        mock_span.add_event.assert_any_call(
-            gen_ai_attributes.PROMPT_EVENT, {gen_ai_attributes.PROMPT_EVENT_PROMPT: prompt}
+        mock_logger.info.assert_any_call(
+            prompt,
+            extra={
+                gen_ai_attributes.EVENT_NAME: gen_ai_attributes.PROMPT,
+                gen_ai_attributes.SYSTEM: MockTextCompletion.MODEL_PROVIDER_NAME,
+            },
         )
 
         # After the call to the model
@@ -127,16 +132,20 @@ async def test_trace_streaming_text_completion(
         if mock_response[0].metadata.get("id") is not None:
             mock_span.set_attribute.assert_any_call(gen_ai_attributes.RESPONSE_ID, mock_response[0].metadata["id"])
 
-        mock_span.add_event.assert_any_call(
-            gen_ai_attributes.COMPLETION_EVENT,
-            {gen_ai_attributes.COMPLETION_EVENT_COMPLETION: _messages_to_openai_format(mock_response)},
+        mock_logger.info.assert_any_call(
+            json.dumps({"message": updates_flatten[0].to_dict(), "index": 0}),
+            extra={
+                gen_ai_attributes.EVENT_NAME: gen_ai_attributes.CHOICE,
+                gen_ai_attributes.SYSTEM: MockTextCompletion.MODEL_PROVIDER_NAME,
+            },
         )
 
 
-@pytest.mark.asyncio
+@patch("semantic_kernel.utils.telemetry.model_diagnostics.decorators.logger")
 @patch("opentelemetry.trace.INVALID_SPAN")  # When no tracer provider is available, the span will be an INVALID_SPAN
 async def test_trace_streaming_text_completion_exception(
     mock_span,
+    mock_logger,
     execution_settings,
     mock_response,
     prompt,
@@ -160,3 +169,11 @@ async def test_trace_streaming_text_completion_exception(
         mock_span.set_status.assert_any_call(StatusCode.ERROR, repr(exception))
 
         mock_span.end.assert_any_call()
+
+        mock_logger.info.assert_any_call(
+            prompt,
+            extra={
+                gen_ai_attributes.EVENT_NAME: gen_ai_attributes.PROMPT,
+                gen_ai_attributes.SYSTEM: MockTextCompletion.MODEL_PROVIDER_NAME,
+            },
+        )

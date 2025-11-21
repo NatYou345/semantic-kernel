@@ -8,6 +8,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Mime;
 using System.Text;
+using System.Text.Json.Nodes;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Plugins.OpenApi;
@@ -298,6 +300,7 @@ public sealed class OpenApiKernelPluginFactoryTests
         Assert.NotNull(operation);
         Assert.Equal("GET", additionalProperties["method"]);
         Assert.Equal("/api-with-open-api-extensions", operation.Path);
+        Assert.Equal("Get API with open-api specification extensions", operation.Summary);
         var serverUrls = additionalProperties["server-urls"] as string[];
         Assert.NotNull(serverUrls);
         Assert.Equal(["https://my-key-vault.vault.azure.net"], serverUrls);
@@ -353,7 +356,7 @@ public sealed class OpenApiKernelPluginFactoryTests
         var plugin = await OpenApiKernelPluginFactory.CreateFromOpenApiAsync("fakePlugin", content, this._executionParameters);
 
         // Assert
-        Assert.Equal(6, plugin.Count());
+        Assert.Equal(8, plugin.Count());
         Assert.True(plugin.TryGetFunction("GetSecretsSecretname", out var _));
     }
 
@@ -372,7 +375,7 @@ public sealed class OpenApiKernelPluginFactoryTests
         var plugin = await OpenApiKernelPluginFactory.CreateFromOpenApiAsync("fakePlugin", content, this._executionParameters);
 
         // Assert
-        Assert.Equal(6, plugin.Count());
+        Assert.Equal(8, plugin.Count());
         Assert.True(plugin.TryGetFunction("GetSecretsSecretname", out var _));
     }
 
@@ -517,6 +520,162 @@ public sealed class OpenApiKernelPluginFactoryTests
         Assert.Same(operations[0], function.Metadata.AdditionalProperties["operation"]);
     }
 
+    [Fact]
+    public async Task ItShouldResolveArgumentsByParameterNamesAsync()
+    {
+        // Arrange
+        using var messageHandlerStub = new HttpMessageHandlerStub();
+        using var httpClient = new HttpClient(messageHandlerStub, false);
+
+        this._executionParameters.EnableDynamicPayload = true;
+        this._executionParameters.HttpClient = httpClient;
+
+        var arguments = new KernelArguments
+        {
+            ["string_parameter"] = "fake-secret-name",
+            ["boolean@parameter"] = true,
+            ["integer+parameter"] = 6,
+            ["float?parameter"] = 23.4f
+        };
+
+        var kernel = new Kernel();
+
+        var openApiDocument = ResourcePluginsProvider.LoadFromResource("documentV3_0.json");
+
+        var plugin = await OpenApiKernelPluginFactory.CreateFromOpenApiAsync("fakePlugin", openApiDocument, this._executionParameters);
+
+        // Act
+        var result = await kernel.InvokeAsync(plugin["TestParameterNamesSanitization"], arguments);
+
+        // Assert path and query parameters added to the request uri
+        Assert.NotNull(messageHandlerStub.RequestUri);
+        Assert.Equal("https://my-key-vault.vault.azure.net/test-parameter-names-sanitization/fake-secret-name?boolean@parameter=true", messageHandlerStub.RequestUri.AbsoluteUri);
+
+        // Assert header parameters added to the request
+        Assert.Equal("6", messageHandlerStub.RequestHeaders!.GetValues("integer+parameter").First());
+
+        // Assert payload parameters added to the request
+        var messageContent = messageHandlerStub.RequestContent;
+        Assert.NotNull(messageContent);
+
+        var deserializedPayload = await JsonNode.ParseAsync(new MemoryStream(messageContent));
+        Assert.NotNull(deserializedPayload);
+
+        Assert.Equal(23.4f, deserializedPayload["float?parameter"]!.GetValue<float>());
+    }
+
+    [Fact]
+    public async Task ItShouldResolveArgumentsBySanitizedParameterNamesAsync()
+    {
+        // Arrange
+        using var messageHandlerStub = new HttpMessageHandlerStub();
+        using var httpClient = new HttpClient(messageHandlerStub, false);
+
+        this._executionParameters.EnableDynamicPayload = true;
+        this._executionParameters.HttpClient = httpClient;
+
+        var arguments = new KernelArguments
+        {
+            ["string_parameter"] = "fake-secret-name",  // Original parameter name - string-parameter
+            ["boolean_parameter"] = true,               // Original parameter name - boolean@parameter
+            ["integer_parameter"] = 6,                  // Original parameter name - integer+parameter
+            ["float_parameter"] = 23.4f                 // Original parameter name - float?parameter
+        };
+
+        var kernel = new Kernel();
+
+        var openApiDocument = ResourcePluginsProvider.LoadFromResource("documentV3_0.json");
+
+        var plugin = await OpenApiKernelPluginFactory.CreateFromOpenApiAsync("fakePlugin", openApiDocument, this._executionParameters);
+
+        // Act
+        var result = await kernel.InvokeAsync(plugin["TestParameterNamesSanitization"], arguments);
+
+        // Assert path and query parameters added to the request uri
+        Assert.NotNull(messageHandlerStub.RequestUri);
+        Assert.Equal("https://my-key-vault.vault.azure.net/test-parameter-names-sanitization/fake-secret-name?boolean@parameter=true", messageHandlerStub.RequestUri.AbsoluteUri);
+
+        // Assert header parameters added to the request
+        Assert.Equal("6", messageHandlerStub.RequestHeaders!.GetValues("integer+parameter").First());
+
+        // Assert payload parameters added to the request
+        var messageContent = messageHandlerStub.RequestContent;
+        Assert.NotNull(messageContent);
+
+        var deserializedPayload = await JsonNode.ParseAsync(new MemoryStream(messageContent));
+        Assert.NotNull(deserializedPayload);
+
+        Assert.Equal(23.4f, deserializedPayload["float?parameter"]!.GetValue<float>());
+    }
+
+    [Fact]
+    public async Task ItShouldPropagateRestApiOperationResponseFactoryToRunnerAsync()
+    {
+        // Arrange
+        bool restApiOperationResponseFactoryIsInvoked = false;
+
+        async Task<RestApiOperationResponse> RestApiOperationResponseFactory(RestApiOperationResponseFactoryContext context, CancellationToken cancellationToken)
+        {
+            restApiOperationResponseFactoryIsInvoked = true;
+
+            return await context.InternalFactory(context, cancellationToken);
+        }
+
+        using var messageHandlerStub = new HttpMessageHandlerStub();
+        using var httpClient = new HttpClient(messageHandlerStub, false);
+
+        this._executionParameters.HttpClient = httpClient;
+        this._executionParameters.RestApiOperationResponseFactory = RestApiOperationResponseFactory;
+
+        var openApiPlugins = await OpenApiKernelPluginFactory.CreateFromOpenApiAsync("fakePlugin", this._openApiDocument, this._executionParameters);
+
+        var kernel = new Kernel();
+
+        var arguments = new KernelArguments
+        {
+            { "secret-name", "fake-secret-name" },
+            { "api-version", "fake-api-version" }
+        };
+
+        // Act
+        await kernel.InvokeAsync(openApiPlugins["GetSecret"], arguments);
+
+        // Assert
+        Assert.True(restApiOperationResponseFactoryIsInvoked);
+    }
+
+    [Fact]
+    public async Task ItCanImportSpecifiedOperationsAsync()
+    {
+        // Arrange
+        string[] operationsToInclude = ["GetSecret", "SetSecret"];
+
+        this._executionParameters.OperationSelectionPredicate = (context) => operationsToInclude.Contains(context.Id);
+
+        // Act
+        var plugin = await OpenApiKernelPluginFactory.CreateFromOpenApiAsync("fakePlugin", this._openApiDocument, this._executionParameters);
+
+        // Assert
+        Assert.Equal(2, plugin.Count());
+        Assert.Contains(plugin, p => p.Name == "GetSecret");
+        Assert.Contains(plugin, p => p.Name == "SetSecret");
+    }
+
+    [Fact]
+    public async Task ItCanFilterOutSpecifiedOperationsAsync()
+    {
+        // Arrange
+        this._executionParameters.OperationsToExclude = ["GetSecret", "SetSecret"];
+
+        // Act
+        var plugin = await OpenApiKernelPluginFactory.CreateFromOpenApiAsync("fakePlugin", this._openApiDocument, this._executionParameters);
+
+        // Assert
+        Assert.True(plugin.Any());
+        Assert.DoesNotContain(plugin, p => p.Name == "GetSecret");
+        Assert.DoesNotContain(plugin, p => p.Name == "SetSecret");
+    }
+
     /// <summary>
     /// Generate theory data for ItAddSecurityMetadataToOperationAsync
     /// </summary>
@@ -554,6 +713,27 @@ public sealed class OpenApiKernelPluginFactoryTests
 
         // Assert
         Assert.False(plugin.TryGetFunction("createItem", out var _));
+    }
+
+    [Fact]
+    public async Task ItCanAddPropertyDescriptionToSchemaAsync()
+    {
+        // Act
+        var plugin = await OpenApiKernelPluginFactory.CreateFromOpenApiAsync("fakePlugin", this._openApiDocument, this._executionParameters);
+
+        // Assert
+        var setSecretFunction = plugin["SetSecret"];
+        Assert.NotNull(setSecretFunction);
+
+        var functionView = setSecretFunction.Metadata;
+        Assert.NotNull(functionView);
+
+        // Check if description is added to the parameter schema
+        var secretNameParameter = functionView.Parameters.First(p => p.Name == "secret_name");
+        Assert.Equal("The name of the secret", secretNameParameter.Description);
+
+        Assert.True(secretNameParameter.Schema!.RootElement.TryGetProperty("description", out var description));
+        Assert.Equal("The name of the secret", description.GetString());
     }
 
     [Fact]

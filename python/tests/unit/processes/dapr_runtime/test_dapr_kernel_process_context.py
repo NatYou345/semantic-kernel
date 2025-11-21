@@ -21,9 +21,9 @@ class DummyInnerStepType:
 
 @pytest.fixture
 def process_context():
-    state = KernelProcessState(name="TestProcess", id=str(uuid.uuid4()))
+    state = KernelProcessState(name="TestProcess", version="1.0", id=str(uuid.uuid4()))
 
-    step_state = KernelProcessStepState(name="TestStep", id="step1")
+    step_state = KernelProcessStepState(name="TestStep", version="1.0", id="step1")
 
     step = KernelProcessStepInfo(
         state=step_state,
@@ -43,7 +43,6 @@ def process_context():
         yield context, mock_dapr_process
 
 
-@pytest.mark.asyncio
 async def test_start_with_event(process_context):
     context, mock_dapr_process = process_context
 
@@ -55,6 +54,7 @@ async def test_start_with_event(process_context):
     expected_payload = {
         "process_info": dapr_process_info.model_dump_json(),
         "parent_process_id": None,
+        "max_supersteps": context.max_supersteps,
     }
     mock_dapr_process.initialize_process.assert_awaited_once_with(expected_payload)
 
@@ -62,7 +62,6 @@ async def test_start_with_event(process_context):
     mock_dapr_process.run_once.assert_awaited_once_with(initial_event_json)
 
 
-@pytest.mark.asyncio
 async def test_send_event(process_context):
     context, mock_dapr_process = process_context
 
@@ -73,7 +72,6 @@ async def test_send_event(process_context):
     mock_dapr_process.send_message.assert_awaited_once_with(event)
 
 
-@pytest.mark.asyncio
 async def test_stop(process_context):
     context, mock_dapr_process = process_context
 
@@ -82,7 +80,6 @@ async def test_stop(process_context):
     mock_dapr_process.stop.assert_awaited_once()
 
 
-@pytest.mark.asyncio
 async def test_get_state(process_context):
     context, mock_dapr_process = process_context
 

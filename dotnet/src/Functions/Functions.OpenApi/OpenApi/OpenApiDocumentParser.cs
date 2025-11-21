@@ -27,7 +27,6 @@ namespace Microsoft.SemanticKernel.Plugins.OpenApi;
 /// <summary>
 /// Parser for OpenAPI documents.
 /// </summary>
-[Experimental("SKEXP0040")]
 public sealed class OpenApiDocumentParser(ILoggerFactory? loggerFactory = null)
 {
     /// <summary>
@@ -189,13 +188,14 @@ public sealed class OpenApiDocumentParser(ILoggerFactory? loggerFactory = null)
         try
         {
             var operations = new List<RestApiOperation>();
-            var operationServers = CreateRestApiOperationServers(document.Servers);
+            var globalServers = CreateRestApiOperationServers(document.Servers);
+            var pathServers = CreateRestApiOperationServers(pathItem.Servers);
 
             foreach (var operationPair in pathItem.Operations)
             {
                 var method = operationPair.Key.ToString();
-
                 var operationItem = operationPair.Value;
+                var operationServers = CreateRestApiOperationServers(operationItem.Servers);
 
                 // Skip the operation parsing and don't add it to the result operations list if it's explicitly excluded by the predicate.
                 if (!options?.OperationSelectionPredicate?.Invoke(new OperationSelectionPredicateContext(operationItem.OperationId, path, method, operationItem.Description)) ?? false)
@@ -206,18 +206,21 @@ public sealed class OpenApiDocumentParser(ILoggerFactory? loggerFactory = null)
                 try
                 {
                     var operation = new RestApiOperation(
-                    id: operationItem.OperationId,
-                    servers: operationServers,
-                    path: path,
-                    method: new HttpMethod(method),
-                    description: string.IsNullOrEmpty(operationItem.Description) ? operationItem.Summary : operationItem.Description,
-                    parameters: CreateRestApiOperationParameters(operationItem.OperationId, operationItem.Parameters),
-                    payload: CreateRestApiOperationPayload(operationItem.OperationId, operationItem.RequestBody),
-                    responses: CreateRestApiOperationExpectedResponses(operationItem.Responses).ToDictionary(static item => item.Item1, static item => item.Item2),
-                    securityRequirements: CreateRestApiOperationSecurityRequirements(operationItem.Security)
-                )
+                        id: operationItem.OperationId,
+                        servers: globalServers,
+                        pathServers: pathServers,
+                        operationServers: operationServers,
+                        path: path,
+                        method: new HttpMethod(method),
+                        description: string.IsNullOrEmpty(operationItem.Description) ? operationItem.Summary : operationItem.Description,
+                        parameters: CreateRestApiOperationParameters(operationItem.OperationId, operationItem.Parameters.Union(pathItem.Parameters, s_parameterNameAndLocationComparer)),
+                        payload: CreateRestApiOperationPayload(operationItem.OperationId, operationItem.RequestBody),
+                        responses: CreateRestApiOperationExpectedResponses(operationItem.Responses).ToDictionary(static item => item.Item1, static item => item.Item2),
+                        securityRequirements: CreateRestApiOperationSecurityRequirements(operationItem.Security)
+                    )
                     {
-                        Extensions = CreateRestApiOperationExtensions(operationItem.Extensions, logger)
+                        Extensions = CreateRestApiOperationExtensions(operationItem.Extensions, logger),
+                        Summary = operationItem.Summary
                     };
 
                     operations.Add(operation);
@@ -237,18 +240,43 @@ public sealed class OpenApiDocumentParser(ILoggerFactory? loggerFactory = null)
         }
     }
 
+    private static readonly ParameterNameAndLocationComparer s_parameterNameAndLocationComparer = new();
+
+    /// <summary>
+    /// Compares two <see cref="OpenApiParameter"/> objects by their name and location.
+    /// </summary>
+    private sealed class ParameterNameAndLocationComparer : IEqualityComparer<OpenApiParameter>
+    {
+        public bool Equals(OpenApiParameter? x, OpenApiParameter? y)
+        {
+            if (x is null || y is null)
+            {
+                return x == y;
+            }
+            return this.GetHashCode(x) == this.GetHashCode(y);
+        }
+        public int GetHashCode([DisallowNull] OpenApiParameter obj)
+        {
+            return HashCode.Combine(obj.Name, obj.In);
+        }
+    }
+
     /// <summary>
     /// Build a list of <see cref="RestApiServer"/> objects from the given list of <see cref="OpenApiServer"/> objects.
     /// </summary>
     /// <param name="servers">Represents servers which hosts the REST API.</param>
     private static List<RestApiServer> CreateRestApiOperationServers(IList<OpenApiServer> servers)
     {
-        var result = new List<RestApiServer>(servers.Count);
+        if (servers == null || servers.Count == 0)
+        {
+            return new List<RestApiServer>();
+        }
 
+        var result = new List<RestApiServer>(servers.Count);
         foreach (var server in servers)
         {
             var variables = server.Variables.ToDictionary(item => item.Key, item => new RestApiServerVariable(item.Value.Default, item.Value.Description, item.Value.Enum));
-            result.Add(new(server?.Url, variables));
+            result.Add(new RestApiServer(server.Url, variables, server.Description));
         }
 
         return result;
@@ -381,7 +409,7 @@ public sealed class OpenApiDocumentParser(ILoggerFactory? loggerFactory = null)
     /// <param name="operationId">The operation id.</param>
     /// <param name="parameters">The OpenAPI parameters.</param>
     /// <returns>The parameters.</returns>
-    private static List<RestApiParameter> CreateRestApiOperationParameters(string operationId, IList<OpenApiParameter> parameters)
+    private static List<RestApiParameter> CreateRestApiOperationParameters(string operationId, IEnumerable<OpenApiParameter> parameters)
     {
         var result = new List<RestApiParameter>();
 
@@ -430,7 +458,7 @@ public sealed class OpenApiDocumentParser(ILoggerFactory? loggerFactory = null)
             return null;
         }
 
-        var mediaType = s_supportedMediaTypes.FirstOrDefault(requestBody.Content.ContainsKey) ?? throw new KernelException($"Neither of the media types of {operationId} is supported.");
+        var mediaType = GetMediaType(requestBody.Content) ?? throw new KernelException($"Neither of the media types of {operationId} is supported.");
         var mediaTypeMetadata = requestBody.Content[mediaType];
 
         var payloadProperties = GetPayloadProperties(operationId, mediaTypeMetadata.Schema);
@@ -438,11 +466,40 @@ public sealed class OpenApiDocumentParser(ILoggerFactory? loggerFactory = null)
         return new RestApiPayload(mediaType, payloadProperties, requestBody.Description, mediaTypeMetadata?.Schema?.ToJsonSchema());
     }
 
+    /// <summary>
+    /// Returns the first supported media type. If none of the media types are supported, an exception is thrown.
+    /// </summary>
+    /// <remarks>
+    /// Handles the case when the media type contains additional parameters e.g. application/json; x-api-version=2.0.
+    /// </remarks>
+    /// <param name="content">The OpenAPI request body content.</param>
+    /// <returns>The first support ed media type.</returns>
+    /// <exception cref="KernelException"></exception>
+    private static string? GetMediaType(IDictionary<string, OpenApiMediaType> content)
+    {
+        foreach (var mediaType in s_supportedMediaTypes)
+        {
+            foreach (var key in content.Keys)
+            {
+                var keyParts = key.Split(';');
+                if (keyParts[0].Equals(mediaType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return key;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Create collection of expected responses for the REST API operation for the supported media types.
+    /// </summary>
+    /// <param name="responses">Responses from the OpenAPI endpoint.</param>
     private static IEnumerable<(string, RestApiExpectedResponse)> CreateRestApiOperationExpectedResponses(OpenApiResponses responses)
     {
         foreach (var response in responses)
         {
-            var mediaType = s_supportedMediaTypes.FirstOrDefault(response.Value.Content.ContainsKey);
+            var mediaType = GetMediaType(response.Value.Content);
             if (mediaType is not null)
             {
                 var matchingSchema = response.Value.Content[mediaType].Schema;

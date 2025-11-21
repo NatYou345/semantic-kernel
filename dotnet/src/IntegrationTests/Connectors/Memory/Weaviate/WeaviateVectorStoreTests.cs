@@ -1,35 +1,20 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System.Linq;
-using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
 using Microsoft.SemanticKernel.Connectors.Weaviate;
+using SemanticKernel.IntegrationTests.Connectors.Memory.Xunit;
 using Xunit;
 
 namespace SemanticKernel.IntegrationTests.Connectors.Memory.Weaviate;
 
 [Collection("WeaviateVectorStoreCollection")]
+[DisableVectorStoreTests(Skip = "Weaviate tests are failing on the build server with connection reset errors, but passing locally.")]
 public sealed class WeaviateVectorStoreTests(WeaviateVectorStoreFixture fixture)
+#pragma warning disable CA2000 // Dispose objects before losing scope
+    : BaseVectorStoreTests<Guid, WeaviateHotel>(new WeaviateVectorStore(fixture.HttpClient!))
+#pragma warning restore CA2000 // Dispose objects before losing scope
 {
-    [Fact]
-    public async Task ItCanGetAListOfExistingCollectionNamesAsync()
-    {
-        // Arrange
-        var collection1 = new WeaviateVectorStoreRecordCollection<WeaviateHotel>(fixture.HttpClient!, "Collection1");
-        var collection2 = new WeaviateVectorStoreRecordCollection<WeaviateHotel>(fixture.HttpClient!, "Collection2");
-        var collection3 = new WeaviateVectorStoreRecordCollection<WeaviateHotel>(fixture.HttpClient!, "Collection3");
-
-        await collection1.CreateCollectionAsync();
-        await collection2.CreateCollectionAsync();
-        await collection3.CreateCollectionAsync();
-
-        var sut = new WeaviateVectorStore(fixture.HttpClient!);
-
-        // Act
-        var collectionNames = await sut.ListCollectionNamesAsync().ToListAsync();
-
-        // Assert
-        Assert.Contains("Collection1", collectionNames);
-        Assert.Contains("Collection2", collectionNames);
-        Assert.Contains("Collection3", collectionNames);
-    }
+    // Weaviate requires each collection name to start with uppercase ASCII letter.
+    protected override IEnumerable<string> CollectionNames => ["Listcollectionnames1", "Listcollectionnames2", "Listcollectionnames3"];
 }

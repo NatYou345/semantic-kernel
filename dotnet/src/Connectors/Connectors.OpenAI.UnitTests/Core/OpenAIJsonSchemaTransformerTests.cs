@@ -3,24 +3,25 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Text.Json;
-using JsonSchemaMapper;
+using Microsoft.Extensions.AI;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Xunit;
 
 namespace SemanticKernel.Connectors.OpenAI.UnitTests.Core;
 
 /// <summary>
-/// Unit tests for <see cref="OpenAIJsonSchemaTransformer"/> class.
+/// Unit tests for schema transformations used by OpenAI clients.
 /// </summary>
 public sealed class OpenAIJsonSchemaTransformerTests
 {
-    private static readonly JsonSchemaMapperConfiguration s_jsonSchemaMapperConfiguration = new()
+    private static readonly AIJsonSchemaCreateOptions s_jsonSchemaCreateOptions = new()
     {
-        IncludeSchemaVersion = false,
-        IncludeTypeInEnums = true,
-        TreatNullObliviousAsNonNullable = true,
-        TransformSchemaNode = OpenAIJsonSchemaTransformer.Transform,
+        TransformOptions = new()
+        {
+            DisallowAdditionalProperties = true,
+            RequireAllProperties = true,
+            MoveDefaultKeywordToDescription = true,
+        }
     };
 
     private static readonly JsonSerializerOptions s_jsonSerializerOptions = new()
@@ -72,7 +73,7 @@ public sealed class OpenAIJsonSchemaTransformerTests
                     "null"
                   ],
                   "items": {
-                    "type": "object",
+                    "type": ["object","null"],
                     "properties": {
                       "TextProperty": {
                         "type": [
@@ -124,7 +125,7 @@ public sealed class OpenAIJsonSchemaTransformerTests
             """;
 
         // Act
-        var schema = KernelJsonSchemaBuilder.Build(type, configuration: s_jsonSchemaMapperConfiguration);
+        var schema = KernelJsonSchemaBuilder.Build(type, configuration: s_jsonSchemaCreateOptions);
 
         // Assert
         Assert.Equal(NormalizeJson(expectedSchema), NormalizeJson(schema.ToString()));

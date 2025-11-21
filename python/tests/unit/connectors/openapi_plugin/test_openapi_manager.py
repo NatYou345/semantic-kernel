@@ -8,17 +8,18 @@ from semantic_kernel.connectors.openapi_plugin.models.rest_api_parameter import 
     RestApiParameter,
     RestApiParameterLocation,
 )
+from semantic_kernel.connectors.openapi_plugin.models.rest_api_run_options import RestApiRunOptions
 from semantic_kernel.connectors.openapi_plugin.openapi_manager import (
     _create_function_from_operation,
     create_functions_from_openapi,
 )
+from semantic_kernel.connectors.openapi_plugin.openapi_runner import OpenApiRunner
 from semantic_kernel.exceptions import FunctionExecutionException
 from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
 from semantic_kernel.kernel import Kernel
 
 
-@pytest.mark.asyncio
 async def test_run_openapi_operation_success(kernel: Kernel):
     runner = AsyncMock()
     operation = MagicMock()
@@ -67,7 +68,6 @@ async def test_run_openapi_operation_success(kernel: Kernel):
         run_operation_mock.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_run_openapi_operation_missing_required_param(kernel: Kernel):
     runner = AsyncMock()
     operation = MagicMock()
@@ -115,7 +115,6 @@ async def test_run_openapi_operation_missing_required_param(kernel: Kernel):
             await run_openapi_operation(kernel, **kwargs)
 
 
-@pytest.mark.asyncio
 async def test_run_openapi_operation_runner_exception(kernel: Kernel):
     runner = AsyncMock()
     operation = MagicMock()
@@ -163,7 +162,6 @@ async def test_run_openapi_operation_runner_exception(kernel: Kernel):
             await run_openapi_operation(kernel, **kwargs)
 
 
-@pytest.mark.asyncio
 async def test_run_openapi_operation_alternative_name(kernel: Kernel):
     runner = AsyncMock()
     operation = MagicMock()
@@ -219,7 +217,6 @@ async def test_run_openapi_operation_alternative_name(kernel: Kernel):
         assert runner.run_operation.call_args[0][1]["param1"] == "value1"
 
 
-@pytest.mark.asyncio
 @patch("semantic_kernel.connectors.openapi_plugin.openapi_parser.OpenApiParser.parse", return_value=None)
 async def test_create_functions_from_openapi_raises_exception(mock_parse):
     """Test that an exception is raised when parsing fails."""
@@ -227,3 +224,49 @@ async def test_create_functions_from_openapi_raises_exception(mock_parse):
         create_functions_from_openapi(plugin_name="test_plugin", openapi_document_path="test_openapi_document_path")
 
     mock_parse.assert_called_once_with("test_openapi_document_path")
+
+
+async def test_run_operation_uses_timeout_from_run_options():
+    minimal_openapi_spec = {
+        "openapi": "3.0.0",
+        "info": {"title": "Test", "version": "1.0.0"},
+        "paths": {},
+    }
+    runner = OpenApiRunner(parsed_openapi_document=minimal_openapi_spec)
+    operation = MagicMock()
+    operation.method = "GET"
+    operation.build_headers.return_value = {}
+    operation.build_operation_payload.return_value = ("{}", None)
+    operation.responses = {}
+    operation.responses = {}
+    operation.operation_id = "test_id"
+
+    desired_timeout = 3.3
+
+    with (
+        patch("httpx.AsyncClient.__aenter__", new_callable=AsyncMock) as mock_enter,
+        patch("httpx.AsyncClient.__aexit__", new_callable=AsyncMock),
+        patch("httpx.AsyncClient.__init__", return_value=None) as mock_init,
+    ):
+        mock_client = MagicMock()
+        mock_enter.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.text = "FAKE_RESPONSE"
+        mock_client.request = AsyncMock(return_value=mock_response)
+
+        operation.build_query_string.return_value = ""
+        operation.server_url = "https://api.example.com"
+        operation.path = "/test"
+        operation.build_operation_url.return_value = "https://api.example.com/test"
+        result = await runner.run_operation(
+            operation=operation, arguments=None, options=RestApiRunOptions(timeout=desired_timeout)
+        )
+
+        assert result == "FAKE_RESPONSE"
+        found = False
+        for call_args in mock_init.call_args_list:
+            if "timeout" in call_args.kwargs and call_args.kwargs["timeout"] == desired_timeout:
+                found = True
+                break
+        assert found, f"httpx.AsyncClient was not called with timeout={desired_timeout}"

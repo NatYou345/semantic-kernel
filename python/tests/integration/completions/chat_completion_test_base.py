@@ -2,14 +2,17 @@
 
 
 import os
-import platform
 import sys
-from functools import reduce
-from typing import Annotated, Any
+from typing import Annotated
+
+if sys.version_info >= (3, 12):
+    from typing import override  # pragma: no cover
+else:
+    from typing_extensions import override  # pragma: no cover
 
 import pytest
 from azure.ai.inference.aio import ChatCompletionsClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import AzureCliCredential
 from openai import AsyncAzureOpenAI
 
 from semantic_kernel.connectors.ai.anthropic import AnthropicChatCompletion, AnthropicChatPromptExecutionSettings
@@ -23,6 +26,7 @@ from semantic_kernel.connectors.ai.google.google_ai import GoogleAIChatCompletio
 from semantic_kernel.connectors.ai.google.vertex_ai import VertexAIChatCompletion, VertexAIChatPromptExecutionSettings
 from semantic_kernel.connectors.ai.mistral_ai import MistralAIChatCompletion, MistralAIChatPromptExecutionSettings
 from semantic_kernel.connectors.ai.ollama import OllamaChatCompletion, OllamaChatPromptExecutionSettings
+from semantic_kernel.connectors.ai.onnx import OnnxGenAIChatCompletion, OnnxGenAIPromptExecutionSettings, ONNXTemplate
 from semantic_kernel.connectors.ai.open_ai import (
     AzureChatCompletion,
     AzureChatPromptExecutionSettings,
@@ -32,6 +36,8 @@ from semantic_kernel.connectors.ai.open_ai import (
 )
 from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
 from semantic_kernel.contents.chat_history import ChatHistory
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.streaming_chat_message_content import StreamingChatMessageContent
 from semantic_kernel.core_plugins.math_plugin import MathPlugin
 from semantic_kernel.functions.kernel_function_decorator import kernel_function
 from semantic_kernel.kernel import Kernel
@@ -40,14 +46,10 @@ from semantic_kernel.utils.authentication.entra_id_authentication import get_ent
 from tests.integration.completions.completion_test_base import CompletionTestBase, ServiceType
 from tests.utils import is_service_setup_for_testing
 
-if sys.version_info >= (3, 12):
-    from typing import override  # pragma: no cover
-else:
-    from typing_extensions import override  # pragma: no cover
-
 # Make sure all services are setup for before running the tests
 # The following exceptions apply:
 # 1. OpenAI and Azure OpenAI services are always setup for testing.
+azure_openai_setup: bool = True
 # 2. Bedrock services don't use API keys and model providers are tested individually,
 #    so no environment variables are required.
 mistral_ai_setup: bool = is_service_setup_for_testing(
@@ -64,14 +66,7 @@ vertex_ai_setup: bool = is_service_setup_for_testing(["VERTEX_AI_PROJECT_ID", "V
 onnx_setup: bool = is_service_setup_for_testing(
     ["ONNX_GEN_AI_CHAT_MODEL_FOLDER"], raise_if_not_set=False
 )  # Tests are optional for ONNX
-anthropic_setup: bool = is_service_setup_for_testing(
-    ["ANTHROPIC_API_KEY", "ANTHROPIC_CHAT_MODEL_ID"], raise_if_not_set=False
-)  # We don't have an Anthropic deployment
-
-skip_on_mac_available = platform.system() == "Darwin"
-if not skip_on_mac_available:
-    from semantic_kernel.connectors.ai.onnx import OnnxGenAIChatCompletion, OnnxGenAIPromptExecutionSettings
-    from semantic_kernel.connectors.ai.onnx.utils import ONNXTemplate
+anthropic_setup: bool = is_service_setup_for_testing(["ANTHROPIC_API_KEY", "ANTHROPIC_CHAT_MODEL_ID"])
 
 
 # A mock plugin that contains a function that returns a complex object.
@@ -93,34 +88,47 @@ class ChatCompletionTestBase(CompletionTestBase):
     """Base class for testing completion services."""
 
     @override
-    @pytest.fixture(scope="class")
-    def services(self) -> dict[str, tuple[ServiceType, type[PromptExecutionSettings]]]:
-        azure_openai_settings = AzureOpenAISettings.create()
-        endpoint = azure_openai_settings.endpoint
+    @pytest.fixture(
+        scope="function"
+    )  # This needs to be scoped to function to avoid resources getting cleaned up after each test
+    def services(self) -> dict[str, tuple[ServiceType | None, type[PromptExecutionSettings] | None]]:
+        azure_openai_setup = True
+        credential = AzureCliCredential()
+        azure_openai_settings = AzureOpenAISettings()
+        endpoint = str(azure_openai_settings.endpoint)
         deployment_name = azure_openai_settings.chat_deployment_name
-        ad_token = get_entra_auth_token(azure_openai_settings.token_endpoint)
+        ad_token = get_entra_auth_token(credential, azure_openai_settings.token_endpoint)
+        if not ad_token:
+            azure_openai_setup = False
         api_version = azure_openai_settings.api_version
-        azure_custom_client = AzureChatCompletion(
-            async_client=AsyncAzureOpenAI(
-                azure_endpoint=endpoint,
-                azure_deployment=deployment_name,
-                azure_ad_token=ad_token,
-                api_version=api_version,
-                default_headers={"Test-User-X-ID": "test"},
-            ),
-        )
-        azure_ai_inference_client = AzureAIInferenceChatCompletion(
-            ai_model_id=deployment_name,
-            client=ChatCompletionsClient(
-                endpoint=f"{str(endpoint).strip('/')}/openai/deployments/{deployment_name}",
-                credential=DefaultAzureCredential(),
-                credential_scopes=["https://cognitiveservices.azure.com/.default"],
-            ),
-        )
+        azure_custom_client = None
+        azure_ai_inference_client = None
+        if azure_openai_setup:
+            azure_custom_client = AzureChatCompletion(
+                async_client=AsyncAzureOpenAI(
+                    azure_endpoint=endpoint,
+                    azure_deployment=deployment_name,
+                    azure_ad_token=ad_token,
+                    api_version=api_version,
+                    default_headers={"Test-User-X-ID": "test"},
+                ),
+            )
+            assert deployment_name
+            azure_ai_inference_client = AzureAIInferenceChatCompletion(
+                ai_model_id=deployment_name,
+                client=ChatCompletionsClient(
+                    endpoint=f"{endpoint.strip('/')}/openai/deployments/{deployment_name}",
+                    credential=credential,  # type: ignore
+                    credential_scopes=["https://cognitiveservices.azure.com/.default"],
+                ),
+            )
 
         return {
             "openai": (OpenAIChatCompletion(), OpenAIChatPromptExecutionSettings),
-            "azure": (AzureChatCompletion(), AzureChatPromptExecutionSettings),
+            "azure": (
+                AzureChatCompletion(credential=credential) if azure_openai_setup else None,
+                AzureChatPromptExecutionSettings,
+            ),
             "azure_custom_client": (azure_custom_client, AzureChatPromptExecutionSettings),
             "azure_ai_inference": (azure_ai_inference_client, AzureAIInferenceChatPromptExecutionSettings),
             "anthropic": (AnthropicChatCompletion() if anthropic_setup else None, AnthropicChatPromptExecutionSettings),
@@ -145,30 +153,30 @@ class ChatCompletionTestBase(CompletionTestBase):
             "vertex_ai": (VertexAIChatCompletion() if vertex_ai_setup else None, VertexAIChatPromptExecutionSettings),
             "onnx_gen_ai": (
                 OnnxGenAIChatCompletion(template=ONNXTemplate.PHI3V) if onnx_setup else None,
-                OnnxGenAIPromptExecutionSettings if not skip_on_mac_available else None,
+                OnnxGenAIPromptExecutionSettings,
             ),
-            "bedrock_amazon_titan": (
-                BedrockChatCompletion(model_id="amazon.titan-text-premier-v1:0"),
+            "bedrock_amazon_nova": (
+                self._try_create_bedrock_chat_completion_client("amazon.nova-lite-v1:0"),
                 BedrockChatPromptExecutionSettings,
             ),
             "bedrock_ai21labs": (
-                BedrockChatCompletion(model_id="ai21.jamba-1-5-mini-v1:0"),
+                self._try_create_bedrock_chat_completion_client("ai21.jamba-1-5-mini-v1:0"),
                 BedrockChatPromptExecutionSettings,
             ),
             "bedrock_anthropic_claude": (
-                BedrockChatCompletion(model_id="anthropic.claude-3-5-sonnet-20240620-v1:0"),
+                self._try_create_bedrock_chat_completion_client("anthropic.claude-3-sonnet-20240229-v1:0"),
                 BedrockChatPromptExecutionSettings,
             ),
             "bedrock_cohere_command": (
-                BedrockChatCompletion(model_id="cohere.command-r-v1:0"),
+                self._try_create_bedrock_chat_completion_client("cohere.command-r-v1:0"),
                 BedrockChatPromptExecutionSettings,
             ),
             "bedrock_meta_llama": (
-                BedrockChatCompletion(model_id="meta.llama3-70b-instruct-v1:0"),
+                self._try_create_bedrock_chat_completion_client("meta.llama3-70b-instruct-v1:0"),
                 BedrockChatPromptExecutionSettings,
             ),
             "bedrock_mistralai": (
-                BedrockChatCompletion(model_id="mistral.mistral-small-2402-v1:0"),
+                self._try_create_bedrock_chat_completion_client("mistral.mistral-small-2402-v1:0"),
                 BedrockChatPromptExecutionSettings,
             ),
         }
@@ -181,11 +189,11 @@ class ChatCompletionTestBase(CompletionTestBase):
     async def get_chat_completion_response(
         self,
         kernel: Kernel,
-        service: ChatCompletionClientBase,
+        service: ServiceType,
         execution_settings: PromptExecutionSettings,
         chat_history: ChatHistory,
         stream: bool,
-    ) -> Any:
+    ) -> ChatMessageContent | StreamingChatMessageContent | None:
         """Get response from the service
 
         Args:
@@ -195,22 +203,32 @@ class ChatCompletionTestBase(CompletionTestBase):
             input (str): Input string.
             stream (bool): Stream flag.
         """
-        if stream:
-            response = service.get_streaming_chat_message_content(
+        assert isinstance(service, ChatCompletionClientBase)
+        if not stream:
+            return await service.get_chat_message_content(
                 chat_history,
                 execution_settings,
                 kernel=kernel,
             )
-            parts = [part async for part in response]
-            if parts:
-                response = reduce(lambda p, r: p + r, parts)
-            else:
-                raise AssertionError("No response")
-        else:
-            response = await service.get_chat_message_content(
+        parts: list[StreamingChatMessageContent] = [
+            part
+            async for part in service.get_streaming_chat_message_content(
                 chat_history,
                 execution_settings,
                 kernel=kernel,
             )
+            if part
+        ]
+        if parts:
+            return sum(parts[1:], parts[0])
+        raise AssertionError("No response")
 
-        return response
+    def _try_create_bedrock_chat_completion_client(self, model_id: str) -> BedrockChatCompletion | None:
+        try:
+            return BedrockChatCompletion(model_id=model_id)
+        except Exception as ex:
+            from conftest import logger
+
+            logger.warning(ex)
+            # Returning None so that the test that uses this service will be skipped
+            return None

@@ -4,10 +4,9 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using Microsoft.SemanticKernel.Agents.Extensions;
 
 namespace Microsoft.SemanticKernel.Agents;
-
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
 
 /// <summary>
 /// Extensions for logging <see cref="AgentGroupChat"/> invocations.
@@ -17,6 +16,7 @@ namespace Microsoft.SemanticKernel.Agents;
 /// generate logging code at compile time to achieve optimized code.
 /// </remarks>
 [ExcludeFromCodeCoverage]
+[Experimental("SKEXP0110")]
 internal static partial class AgentGroupChatLogMessages
 {
     /// <summary>
@@ -25,12 +25,13 @@ internal static partial class AgentGroupChatLogMessages
     [LoggerMessage(
         EventId = 0,
         Level = LogLevel.Debug,
-        Message = "[{MethodName}] Invoking chat: {AgentType}: {AgentId}")]
+        Message = "[{MethodName}] Invoking chat: {AgentType}: {AgentId}/{AgentName}")]
     public static partial void LogAgentGroupChatInvokingAgent(
         this ILogger logger,
         string methodName,
         Type agentType,
-        string agentId);
+        string agentId,
+        string agentName);
 
     /// <summary>
     /// Logs <see cref="AgentGroupChat"/> invoking agents (started).
@@ -40,6 +41,7 @@ internal static partial class AgentGroupChatLogMessages
             logLevel: LogLevel.Debug,
             eventId: 0,
             "[{MethodName}] Invoking chat: {Agents}");
+
     public static void LogAgentGroupChatInvokingAgents(
         this ILogger logger,
         string methodName,
@@ -47,7 +49,9 @@ internal static partial class AgentGroupChatLogMessages
     {
         if (logger.IsEnabled(LogLevel.Debug))
         {
-            s_logAgentGroupChatInvokingAgents(logger, methodName, string.Join(", ", agents.Select(a => $"{a.GetType()}:{a.Id}")), null);
+            var agentsMessage = string.Join(", ", agents.Select(a => $"{a.GetType()}:{a.Id}/{a.GetDisplayName()}"));
+
+            s_logAgentGroupChatInvokingAgents(logger, methodName, agentsMessage, null);
         }
     }
 
@@ -55,7 +59,7 @@ internal static partial class AgentGroupChatLogMessages
     /// Logs <see cref="AgentGroupChat"/> selecting agent (started).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] Selecting agent: {StrategyType}.")]
     public static partial void LogAgentGroupChatSelectingAgent(
@@ -67,7 +71,7 @@ internal static partial class AgentGroupChatLogMessages
     /// Logs <see cref="AgentGroupChat"/> Unable to select agent.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Error,
         Message = "[{MethodName}] Unable to determine next agent.")]
     public static partial void LogAgentGroupChatNoAgentSelected(
@@ -79,21 +83,22 @@ internal static partial class AgentGroupChatLogMessages
     /// Logs <see cref="AgentGroupChat"/> selected agent (complete).
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 3,
         Level = LogLevel.Information,
-        Message = "[{MethodName}] Agent selected {AgentType}: {AgentId} by {StrategyType}")]
+        Message = "[{MethodName}] Agent selected {AgentType}: {AgentId}/{AgentName} by {StrategyType}")]
     public static partial void LogAgentGroupChatSelectedAgent(
         this ILogger logger,
         string methodName,
         Type agentType,
         string agentId,
+        string agentName,
         Type strategyType);
 
     /// <summary>
     /// Logs <see cref="AgentGroupChat"/> yield chat.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 4,
         Level = LogLevel.Debug,
         Message = "[{MethodName}] Yield chat - IsComplete: {IsComplete}")]
     public static partial void LogAgentGroupChatYield(

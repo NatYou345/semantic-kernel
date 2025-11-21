@@ -2,18 +2,22 @@
 
 import sys
 from collections.abc import AsyncGenerator, AsyncIterable, Callable
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if sys.version_info >= (3, 12):
+    from typing import override  # pragma: no cover
+else:
+    from typing_extensions import override  # pragma: no cover
 
 import vertexai
-from google.cloud.aiplatform_v1beta1.types.content import Content
 from pydantic import ValidationError
-from vertexai.generative_models import Candidate, GenerationResponse, GenerativeModel
+from vertexai.generative_models import Candidate, Content, GenerationResponse, GenerativeModel
 
 from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
 from semantic_kernel.connectors.ai.completion_usage import CompletionUsage
-from semantic_kernel.connectors.ai.function_call_choice_configuration import FunctionCallChoiceConfiguration
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceType
 from semantic_kernel.connectors.ai.google.shared_utils import (
+    collapse_function_call_results_in_chat_history,
     filter_system_message,
     format_gemini_function_name_to_kernel_function_fully_qualified_name,
 )
@@ -29,11 +33,10 @@ from semantic_kernel.connectors.ai.google.vertex_ai.vertex_ai_prompt_execution_s
     VertexAIChatPromptExecutionSettings,
 )
 from semantic_kernel.connectors.ai.google.vertex_ai.vertex_ai_settings import VertexAISettings
-from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
 from semantic_kernel.contents.chat_history import ChatHistory
-from semantic_kernel.contents.chat_message_content import ITEM_TYPES, ChatMessageContent
+from semantic_kernel.contents.chat_message_content import CMC_ITEM_TYPES, ChatMessageContent
 from semantic_kernel.contents.function_call_content import FunctionCallContent
-from semantic_kernel.contents.streaming_chat_message_content import ITEM_TYPES as STREAMING_ITEM_TYPES
+from semantic_kernel.contents.streaming_chat_message_content import STREAMING_CMC_ITEM_TYPES as STREAMING_ITEM_TYPES
 from semantic_kernel.contents.streaming_chat_message_content import StreamingChatMessageContent
 from semantic_kernel.contents.streaming_text_content import StreamingTextContent
 from semantic_kernel.contents.text_content import TextContent
@@ -48,10 +51,9 @@ from semantic_kernel.utils.telemetry.model_diagnostics.decorators import (
     trace_streaming_chat_completion,
 )
 
-if sys.version_info >= (3, 12):
-    from typing import override  # pragma: no cover
-else:
-    from typing_extensions import override  # pragma: no cover
+if TYPE_CHECKING:
+    from semantic_kernel.connectors.ai.function_call_choice_configuration import FunctionCallChoiceConfiguration
+    from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
 
 
 class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
@@ -85,7 +87,7 @@ class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
             env_file_encoding (str): The encoding of the environment file.
         """
         try:
-            vertex_ai_settings = VertexAISettings.create(
+            vertex_ai_settings = VertexAISettings(
                 project_id=project_id,
                 region=region,
                 gemini_model_id=gemini_model_id,
@@ -122,10 +124,13 @@ class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
         assert isinstance(settings, VertexAIChatPromptExecutionSettings)  # nosec
 
         vertexai.init(project=self.service_settings.project_id, location=self.service_settings.region)
+        assert self.service_settings.gemini_model_id is not None  # nosec
         model = GenerativeModel(
             self.service_settings.gemini_model_id,
             system_instruction=filter_system_message(chat_history),
         )
+
+        collapse_function_call_results_in_chat_history(chat_history)
 
         response: GenerationResponse = await model.generate_content_async(
             contents=self._prepare_chat_history_for_request(chat_history),
@@ -142,16 +147,20 @@ class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
         self,
         chat_history: "ChatHistory",
         settings: "PromptExecutionSettings",
+        function_invoke_attempt: int = 0,
     ) -> AsyncGenerator[list["StreamingChatMessageContent"], Any]:
         if not isinstance(settings, VertexAIChatPromptExecutionSettings):
             settings = self.get_prompt_execution_settings_from_settings(settings)
         assert isinstance(settings, VertexAIChatPromptExecutionSettings)  # nosec
 
         vertexai.init(project=self.service_settings.project_id, location=self.service_settings.region)
+        assert self.service_settings.gemini_model_id is not None  # nosec
         model = GenerativeModel(
             self.service_settings.gemini_model_id,
             system_instruction=filter_system_message(chat_history),
         )
+
+        collapse_function_call_results_in_chat_history(chat_history)
 
         response: AsyncIterable[GenerationResponse] = await model.generate_content_async(
             contents=self._prepare_chat_history_for_request(chat_history),
@@ -162,7 +171,10 @@ class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
         )
 
         async for chunk in response:
-            yield [self._create_streaming_chat_message_content(chunk, candidate) for candidate in chunk.candidates]
+            yield [
+                self._create_streaming_chat_message_content(chunk, candidate, function_invoke_attempt)
+                for candidate in chunk.candidates
+            ]
 
     @override
     def _verify_function_choice_settings(self, settings: "PromptExecutionSettings") -> None:
@@ -177,7 +189,7 @@ class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
     @override
     def _update_function_choice_settings_callback(
         self,
-    ) -> Callable[[FunctionCallChoiceConfiguration, "PromptExecutionSettings", FunctionChoiceType], None]:
+    ) -> Callable[["FunctionCallChoiceConfiguration", "PromptExecutionSettings", FunctionChoiceType], None]:
         return update_settings_from_function_choice_configuration
 
     @override
@@ -229,7 +241,7 @@ class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
         response_metadata = self._get_metadata_from_response(response)
         response_metadata.update(self._get_metadata_from_candidate(candidate))
 
-        items: list[ITEM_TYPES] = []
+        items: list[CMC_ITEM_TYPES] = []
         for idx, part in enumerate(candidate.content.parts):
             part_dict = part.to_dict()
             if "text" in part_dict:
@@ -262,12 +274,14 @@ class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
         self,
         chunk: GenerationResponse,
         candidate: Candidate,
+        function_invoke_attempt: int,
     ) -> StreamingChatMessageContent:
         """Create a streaming chat message content object.
 
         Args:
             chunk: The response from the service.
             candidate: The candidate from the response.
+            function_invoke_attempt: The function invoke attempt.
 
         Returns:
             A streaming chat message content object.
@@ -308,6 +322,7 @@ class VertexAIChatCompletion(VertexAIBase, ChatCompletionClientBase):
             inner_content=chunk,
             finish_reason=finish_reason,
             metadata=response_metadata,
+            function_invoke_attempt=function_invoke_attempt,
         )
 
     # endregion

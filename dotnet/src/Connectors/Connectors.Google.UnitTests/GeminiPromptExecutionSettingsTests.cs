@@ -28,7 +28,8 @@ public sealed class GeminiPromptExecutionSettingsTests
         Assert.Null(executionSettings.SafetySettings);
         Assert.Null(executionSettings.AudioTimestamp);
         Assert.Null(executionSettings.ResponseMimeType);
-        Assert.Equal(GeminiPromptExecutionSettings.DefaultTextMaxTokens, executionSettings.MaxTokens);
+        Assert.Null(executionSettings.ResponseSchema);
+        Assert.Null(executionSettings.MaxTokens);
     }
 
     [Fact]
@@ -70,7 +71,8 @@ public sealed class GeminiPromptExecutionSettingsTests
                 { "max_tokens", 1000 },
                 { "temperature", 0 },
                 { "audio_timestamp", true },
-                { "response_mimetype", "application/json" }
+                { "response_mimetype", "application/json" },
+                { "response_schema", JsonSerializer.Serialize(new { }) }
             }
         };
 
@@ -81,6 +83,9 @@ public sealed class GeminiPromptExecutionSettingsTests
         Assert.NotNull(executionSettings);
         Assert.Equal(1000, executionSettings.MaxTokens);
         Assert.Equal(0, executionSettings.Temperature);
+        Assert.Equal("application/json", executionSettings.ResponseMimeType);
+        Assert.NotNull(executionSettings.ResponseSchema);
+        Assert.Equal(typeof(JsonElement), executionSettings.ResponseSchema.GetType());
         Assert.True(executionSettings.AudioTimestamp);
     }
 
@@ -104,7 +109,10 @@ public sealed class GeminiPromptExecutionSettingsTests
                               "category": "{{category.Label}}",
                               "threshold": "{{threshold.Label}}"
                             }
-                          ]
+                          ],
+                          "thinking_config": {
+                            "thinking_budget": 1000
+                          }
                         }
                         """;
         var actualSettings = JsonSerializer.Deserialize<PromptExecutionSettings>(json);
@@ -124,6 +132,8 @@ public sealed class GeminiPromptExecutionSettingsTests
         Assert.Single(executionSettings.SafetySettings!, settings =>
             settings.Category.Equals(category) &&
             settings.Threshold.Equals(threshold));
+
+        Assert.Equal(1000, executionSettings.ThinkingConfig?.ThinkingBudget);
     }
 
     [Fact]
@@ -147,7 +157,10 @@ public sealed class GeminiPromptExecutionSettingsTests
                               "category": "{{category.Label}}",
                               "threshold": "{{threshold.Label}}"
                             }
-                          ]
+                          ],
+                          "thinking_config": {
+                            "thinking_budget": 1000
+                          }
                         }
                         """;
         var executionSettings = JsonSerializer.Deserialize<GeminiPromptExecutionSettings>(json);
@@ -163,6 +176,7 @@ public sealed class GeminiPromptExecutionSettingsTests
         Assert.Equivalent(executionSettings.StopSequences, clone.StopSequences);
         Assert.Equivalent(executionSettings.SafetySettings, clone.SafetySettings);
         Assert.Equal(executionSettings.AudioTimestamp, clone.AudioTimestamp);
+        Assert.Equivalent(executionSettings.ThinkingConfig, clone.ThinkingConfig);
     }
 
     [Fact]
@@ -186,7 +200,10 @@ public sealed class GeminiPromptExecutionSettingsTests
                               "category": "{{category.Label}}",
                               "threshold": "{{threshold.Label}}"
                             }
-                          ]
+                          ],
+                          "thinking_config": {
+                            "thinking_budget": 1000
+                          }
                         }
                         """;
         var executionSettings = JsonSerializer.Deserialize<GeminiPromptExecutionSettings>(json);
@@ -201,5 +218,7 @@ public sealed class GeminiPromptExecutionSettingsTests
         Assert.Throws<InvalidOperationException>(() => executionSettings.Temperature = 0.5);
         Assert.Throws<InvalidOperationException>(() => executionSettings.AudioTimestamp = false);
         Assert.Throws<NotSupportedException>(() => executionSettings.StopSequences!.Add("baz"));
+        Assert.Throws<NotSupportedException>(() => executionSettings.SafetySettings!.Add(new GeminiSafetySetting(GeminiSafetyCategory.Toxicity, GeminiSafetyThreshold.Unspecified)));
+        Assert.Throws<InvalidOperationException>(() => executionSettings.ThinkingConfig = new GeminiThinkingConfig { ThinkingBudget = 1 });
     }
 }

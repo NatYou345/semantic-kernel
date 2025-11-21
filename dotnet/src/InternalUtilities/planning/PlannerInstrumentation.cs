@@ -119,13 +119,13 @@ internal static partial class PlannerInstrumentation
     static partial void LogCreatePlanStarted(this ILogger logger);
 
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Trace, // Sensitive data, logging as trace, disabled by default
         Message = "Goal: {Goal}")]
     static partial void LogGoal(this ILogger logger, string goal);
 
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Information,
         Message = "Plan created.")]
     static partial void LogPlanCreated(this ILogger logger);
@@ -152,13 +152,13 @@ internal static partial class PlannerInstrumentation
     }
 
     [LoggerMessage(
-        EventId = 0,
+        EventId = 3,
         Level = LogLevel.Error,
         Message = "Plan creation failed. Error: {Message}")]
     static partial void LogCreatePlanError(this ILogger logger, Exception exception, string message);
 
     [LoggerMessage(
-        EventId = 0,
+        EventId = 4,
         Level = LogLevel.Information,
         Message = "Plan creation duration: {Duration}s.")]
     static partial void LogCreatePlanDuration(this ILogger logger, double duration);
@@ -167,13 +167,13 @@ internal static partial class PlannerInstrumentation
 
     #region InvokePlan Logging helpers
     [LoggerMessage(
-        EventId = 0,
+        EventId = 5,
         Level = LogLevel.Information,
         Message = "Plan execution started.")]
     static partial void LogInvokePlanStarted(this ILogger logger);
 
     [LoggerMessage(
-        EventId = 0,
+        EventId = 6,
         Level = LogLevel.Information,
         Message = "Plan executed successfully.")]
     static partial void LogInvokePlanSuccess(this ILogger logger);
@@ -203,13 +203,13 @@ internal static partial class PlannerInstrumentation
     }
 
     [LoggerMessage(
-        EventId = 0,
+        EventId = 7,
         Level = LogLevel.Error,
         Message = "Plan execution failed. Error: {Message}")]
     static partial void LogInvokePlanError(this ILogger logger, Exception exception, string message);
 
     [LoggerMessage(
-        EventId = 0,
+        EventId = 8,
         Level = LogLevel.Information,
         Message = "Plan execution duration: {Duration}s.")]
     static partial void LogInvokePlanDuration(this ILogger logger, double duration);

@@ -1,14 +1,11 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-using System.Diagnostics.CodeAnalysis;
-
 namespace Microsoft.SemanticKernel.Plugins.OpenApi;
 
 /// <summary>
 /// Initializes a new instance of the <see cref="RestApiParameterFilterContext"/> class.
 /// </summary>
-[Experimental("SKEXP0040")]
-internal sealed class RestApiParameterFilterContext
+public sealed class RestApiParameterFilterContext
 {
     /// <summary>
     /// The instance of <see cref="RestApiOperation"/> this parameter belongs to.

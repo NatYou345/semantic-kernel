@@ -174,6 +174,8 @@ public sealed class GeminiChatStreamingTests : IDisposable
         }
 
         Assert.Equal(testDataResponse.UsageMetadata!.PromptTokenCount, metadata.PromptTokenCount);
+        Assert.Equal(testDataResponse.UsageMetadata!.CachedContentTokenCount, metadata.CachedContentTokenCount);
+        Assert.Equal(testDataResponse.UsageMetadata!.ThoughtsTokenCount, metadata.ThoughtsTokenCount);
         Assert.Equal(testDataCandidate.TokenCount, metadata.CurrentCandidateTokenCount);
         Assert.Equal(testDataResponse.UsageMetadata.CandidatesTokenCount, metadata.CandidatesTokenCount);
         Assert.Equal(testDataResponse.UsageMetadata.TotalTokenCount, metadata.TotalTokenCount);
@@ -218,6 +220,8 @@ public sealed class GeminiChatStreamingTests : IDisposable
         }
 
         Assert.Equal(testDataResponse.UsageMetadata!.PromptTokenCount, metadata[nameof(GeminiMetadata.PromptTokenCount)]);
+        Assert.Equal(testDataResponse.UsageMetadata!.CachedContentTokenCount, metadata[nameof(GeminiMetadata.CachedContentTokenCount)]);
+        Assert.Equal(testDataResponse.UsageMetadata!.ThoughtsTokenCount, metadata[nameof(GeminiMetadata.ThoughtsTokenCount)]);
         Assert.Equal(testDataCandidate.TokenCount, metadata[nameof(GeminiMetadata.CurrentCandidateTokenCount)]);
         Assert.Equal(testDataResponse.UsageMetadata.CandidatesTokenCount, metadata[nameof(GeminiMetadata.CandidatesTokenCount)]);
         Assert.Equal(testDataResponse.UsageMetadata.TotalTokenCount, metadata[nameof(GeminiMetadata.TotalTokenCount)]);
@@ -390,6 +394,38 @@ public sealed class GeminiChatStreamingTests : IDisposable
         var header = this._messageHandlerStub.RequestHeaders.GetValues(HttpHeaderConstant.Names.SemanticKernelVersion).SingleOrDefault();
         Assert.NotNull(header);
         Assert.Equal(expectedVersion, header);
+    }
+
+    [Fact]
+    public async Task ItCreatesPostRequestWithApiKeyInHeaderAsync()
+    {
+        // Arrange
+        var client = this.CreateChatCompletionClient();
+        var chatHistory = CreateSampleChatHistory();
+
+        // Act
+        await client.StreamGenerateChatMessageAsync(chatHistory).ToListAsync();
+
+        // Assert
+        Assert.NotNull(this._messageHandlerStub.RequestHeaders);
+        var apiKeyHeader = this._messageHandlerStub.RequestHeaders.GetValues("x-goog-api-key").SingleOrDefault();
+        Assert.NotNull(apiKeyHeader);
+        Assert.Equal("fake-key", apiKeyHeader);
+    }
+
+    [Fact]
+    public async Task ItCreatesPostRequestWithoutApiKeyInUrlAsync()
+    {
+        // Arrange
+        var client = this.CreateChatCompletionClient();
+        var chatHistory = CreateSampleChatHistory();
+
+        // Act
+        await client.StreamGenerateChatMessageAsync(chatHistory).ToListAsync();
+
+        // Assert
+        Assert.NotNull(this._messageHandlerStub.RequestUri);
+        Assert.DoesNotContain("key=", this._messageHandlerStub.RequestUri.ToString());
     }
 
     private static ChatHistory CreateSampleChatHistory()

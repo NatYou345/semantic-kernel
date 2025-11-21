@@ -15,8 +15,6 @@ public class BedrockTextGenerationTests
     [InlineData("cohere.command-r-v1:0")]
     [InlineData("cohere.command-r-plus-v1:0")]
     [InlineData("ai21.jamba-instruct-v1:0")]
-    [InlineData("ai21.j2-ultra-v1")]
-    [InlineData("ai21.j2-mid-v1")]
     [InlineData("meta.llama3-70b-instruct-v1:0")]
     [InlineData("meta.llama3-8b-instruct-v1:0")]
     [InlineData("mistral.mistral-7b-instruct-v0:2")]
@@ -39,6 +37,7 @@ public class BedrockTextGenerationTests
         foreach (var text in response)
         {
             output += text;
+            Assert.NotNull(text.InnerContent);
         }
 
         // Assert
@@ -67,6 +66,7 @@ public class BedrockTextGenerationTests
         foreach (var text in response)
         {
             output += text;
+            Assert.NotNull(text.InnerContent);
         }
 
         // Assert
@@ -103,6 +103,7 @@ public class BedrockTextGenerationTests
         await foreach (var textContent in response)
         {
             output += textContent.Text;
+            Assert.NotNull(textContent.InnerContent);
         }
 
         // Assert
@@ -130,6 +131,7 @@ public class BedrockTextGenerationTests
         await foreach (var textContent in response)
         {
             output += textContent.Text;
+            Assert.NotNull(textContent.InnerContent);
         }
 
         // Assert

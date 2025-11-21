@@ -52,6 +52,15 @@ def test_azure_ai_inference_text_embedding_init_with_service_id(
     assert isinstance(azure_ai_inference.client, EmbeddingsClient)
 
 
+def test_azure_ai_inference_text_embedding_init_with_api_version(azure_ai_inference_unit_test_env, model_id) -> None:
+    """Test initialization of AzureAIInferenceTextEmbedding with api_version"""
+    azure_ai_inference = AzureAIInferenceTextEmbedding(model_id, api_version="2024-02-15-test")
+
+    assert azure_ai_inference.ai_model_id == model_id
+    assert isinstance(azure_ai_inference.client, EmbeddingsClient)
+    assert azure_ai_inference.client._config.api_version == "2024-02-15-test"
+
+
 @pytest.mark.parametrize(
     "azure_ai_inference_client",
     [AzureAIInferenceTextEmbedding.__name__],
@@ -74,7 +83,6 @@ def test_azure_ai_inference_text_embedding_init_with_empty_endpoint(azure_ai_inf
         AzureAIInferenceTextEmbedding(model_id, env_file_path="fake_path")
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "azure_ai_inference_service",
     [AzureAIInferenceTextEmbedding.__name__],
@@ -84,6 +92,7 @@ def test_azure_ai_inference_text_embedding_init_with_empty_endpoint(azure_ai_inf
 async def test_azure_ai_inference_text_embedding(
     mock_embed,
     azure_ai_inference_service,
+    model_id,
 ) -> None:
     """Test text embedding generation of AzureAIInferenceTextEmbedding without settings"""
     texts = ["hello", "world"]
@@ -91,6 +100,7 @@ async def test_azure_ai_inference_text_embedding(
 
     mock_embed.assert_awaited_once_with(
         input=texts,
+        model=model_id,
         model_extras=None,
         dimensions=None,
         encoding_format=None,
@@ -98,7 +108,6 @@ async def test_azure_ai_inference_text_embedding(
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "azure_ai_inference_service",
     [AzureAIInferenceTextEmbedding.__name__],
@@ -108,6 +117,7 @@ async def test_azure_ai_inference_text_embedding(
 async def test_azure_ai_inference_text_embedding_with_standard_settings(
     mock_embed,
     azure_ai_inference_service,
+    model_id,
 ) -> None:
     """Test text embedding generation of AzureAIInferenceTextEmbedding with standard settings"""
     texts = ["hello", "world"]
@@ -118,6 +128,7 @@ async def test_azure_ai_inference_text_embedding_with_standard_settings(
 
     mock_embed.assert_awaited_once_with(
         input=texts,
+        model=model_id,
         model_extras=None,
         dimensions=settings.dimensions,
         encoding_format=settings.encoding_format,
@@ -125,7 +136,6 @@ async def test_azure_ai_inference_text_embedding_with_standard_settings(
     )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "azure_ai_inference_service",
     [AzureAIInferenceTextEmbedding.__name__],
@@ -135,6 +145,7 @@ async def test_azure_ai_inference_text_embedding_with_standard_settings(
 async def test_azure_ai_inference_text_embedding_with_extra_parameters(
     mock_embed,
     azure_ai_inference_service,
+    model_id,
 ) -> None:
     """Test text embedding generation of AzureAIInferenceTextEmbedding with extra parameters"""
     texts = ["hello", "world"]
@@ -144,6 +155,7 @@ async def test_azure_ai_inference_text_embedding_with_extra_parameters(
 
     mock_embed.assert_awaited_once_with(
         input=texts,
+        model=model_id,
         model_extras=extra_parameters,
         dimensions=settings.dimensions,
         encoding_format=settings.encoding_format,

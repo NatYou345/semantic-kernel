@@ -41,6 +41,18 @@ def _format_system_message(message: ChatMessageContent) -> SystemMessage:
     return SystemMessage(content=message.content)
 
 
+def _format_developer_message(message: ChatMessageContent) -> ChatRequestMessage:
+    """Format a developer message to the expected object for the client.
+
+    Args:
+        message: The developer message.
+
+    Returns:
+        The formatted developer message.
+    """
+    return ChatRequestMessage({"role": "developer", "content": message.content})
+
+
 def _format_user_message(message: ChatMessageContent) -> UserMessage:
     """Format a user message to the expected object for the client.
 
@@ -132,7 +144,9 @@ def _format_tool_message(message: ChatMessageContent) -> ToolMessage:
         raise ValueError("No FunctionResultContent found in the message items")
 
     # The API expects the result to be a string, so we need to convert it to a string
-    return ToolMessage(content=str(message.items[0].result), tool_call_id=message.items[0].id)
+    return ToolMessage(
+        content=str(message.items[0].result), tool_call_id=message.items[0].id if message.items[0].id else "None"
+    )
 
 
 MESSAGE_CONVERTERS: dict[AuthorRole, Callable[[ChatMessageContent], ChatRequestMessage]] = {
@@ -140,4 +154,5 @@ MESSAGE_CONVERTERS: dict[AuthorRole, Callable[[ChatMessageContent], ChatRequestM
     AuthorRole.USER: _format_user_message,
     AuthorRole.ASSISTANT: _format_assistant_message,
     AuthorRole.TOOL: _format_tool_message,
+    AuthorRole.DEVELOPER: _format_developer_message,
 }

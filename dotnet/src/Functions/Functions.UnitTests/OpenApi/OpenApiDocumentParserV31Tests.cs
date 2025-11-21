@@ -6,8 +6,11 @@ using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi.Models;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Plugins.OpenApi;
 using SemanticKernel.Functions.UnitTests.OpenApi.TestPlugins;
@@ -26,6 +29,11 @@ public sealed class OpenApiDocumentParserV31Tests : IDisposable
     /// OpenAPI document stream.
     /// </summary>
     private readonly Stream _openApiDocument;
+
+    /// <summary>
+    /// Logger instance.
+    /// </summary>
+    private readonly ILogger _logger = new LoggerFactory().CreateLogger<OpenApiDocumentParserV30Tests>();
 
     /// <summary>
     /// Creates an instance of a <see cref="OpenApiDocumentParserV31Tests"/> class.
@@ -114,6 +122,7 @@ public sealed class OpenApiDocumentParserV31Tests : IDisposable
         var putOperation = restApi.Operations.Single(o => o.Id == "SetSecret");
         Assert.NotNull(putOperation);
         Assert.Equal("Sets a secret in a specified key vault.", putOperation.Description);
+        Assert.Equal("Create or update secret value", putOperation.Summary);
         Assert.Equal("https://my-key-vault.vault.azure.net", putOperation.Servers[0].Url);
         Assert.Equal(HttpMethod.Put, putOperation.Method);
         Assert.Equal("/secrets/{secret-name}", putOperation.Path);
@@ -166,6 +175,7 @@ public sealed class OpenApiDocumentParserV31Tests : IDisposable
         var operation = restApi.Operations.Single(o => o.Id == "Excuses");
         Assert.NotNull(operation);
         Assert.Equal("Turn a scenario into a creative or humorous excuse to send your boss", operation.Description);
+        Assert.Equal("Turn a scenario into a creative or humorous excuse to send your boss", operation.Summary);
     }
 
     [Fact]
@@ -236,7 +246,7 @@ public sealed class OpenApiDocumentParserV31Tests : IDisposable
         var restApi = await this._sut.ParseAsync(this._openApiDocument);
 
         // Assert
-        Assert.Equal(6, restApi.Operations.Count);
+        Assert.Equal(8, restApi.Operations.Count);
     }
 
     [Fact]
@@ -475,6 +485,229 @@ public sealed class OpenApiDocumentParserV31Tests : IDisposable
 
         Assert.Equal("https://my-key-vault.vault.azure.net", restApi.Operations[0].Servers[0].Url);
         Assert.Equal("https://ppe.my-key-vault.vault.azure.net", restApi.Operations[0].Servers[1].Url);
+    }
+
+    [Fact]
+    public async Task ItCanParsePathItemPathParametersAsync()
+    {//TODO update the document version when upgrading Microsoft.OpenAPI to v2
+        var document =
+        """
+        {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Test API",
+                "version": "1.0.0"
+            },
+            "paths": {
+                "/items/{itemId}/{format}": {
+                    "parameters": [
+                        {
+                            "name": "itemId",
+                            "in": "path",
+                            "required": true,
+                            "schema": {
+                                "type": "string"
+                            }
+                        }
+                    ],
+                    "get": {
+                        "parameters": [
+                            {
+                                "name": "format",
+                                "in": "path",
+                                "required": true,
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        ],
+                        "summary": "Get an item by ID",
+                        "responses": {
+                            "200": {
+                                "description": "Successful response"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """;
+
+        await using var steam = new MemoryStream(Encoding.UTF8.GetBytes(document));
+        var restApi = await this._sut.ParseAsync(steam);
+
+        Assert.NotNull(restApi);
+        Assert.NotNull(restApi.Operations);
+        Assert.NotEmpty(restApi.Operations);
+
+        var firstOperation = restApi.Operations[0];
+
+        Assert.NotNull(firstOperation);
+        Assert.Equal("Get an item by ID", firstOperation.Description);
+        Assert.Equal("/items/{itemId}/{format}", firstOperation.Path);
+
+        var parameters = firstOperation.GetParameters();
+        Assert.NotNull(parameters);
+        Assert.Equal(2, parameters.Count);
+
+        var pathParameter = parameters.Single(static p => "itemId".Equals(p.Name, StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(pathParameter);
+        Assert.True(pathParameter.IsRequired);
+        Assert.Equal(RestApiParameterLocation.Path, pathParameter.Location);
+        Assert.Null(pathParameter.DefaultValue);
+        Assert.NotNull(pathParameter.Schema);
+        Assert.Equal("string", pathParameter.Schema.RootElement.GetProperty("type").GetString());
+
+        var formatParameter = parameters.Single(static p => "format".Equals(p.Name, StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(formatParameter);
+        Assert.True(formatParameter.IsRequired);
+        Assert.Equal(RestApiParameterLocation.Path, formatParameter.Location);
+        Assert.Null(formatParameter.DefaultValue);
+        Assert.NotNull(formatParameter.Schema);
+        Assert.Equal("string", formatParameter.Schema.RootElement.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public async Task ItCanParsePathItemPathParametersAndOverridesAsync()
+    {//TODO update the document version when upgrading Microsoft.OpenAPI to v2
+        var document =
+        """
+        {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Test API",
+                "version": "1.0.0"
+            },
+            "paths": {
+                "/items/{itemId}/{format}": {
+                    "parameters": [
+                        {
+                            "name": "itemId",
+                            "in": "path",
+                            "required": true,
+                            "schema": {
+                                "type": "string"
+                            }
+                        }
+                    ],
+                    "get": {
+                        "parameters": [
+                            {
+                                "name": "format",
+                                "in": "path",
+                                "required": true,
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            {
+                                "name": "itemId",
+                                "in": "path",
+                                "description": "item ID override",
+                                "required": true,
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        ],
+                        "summary": "Get an item by ID",
+                        "responses": {
+                            "200": {
+                                "description": "Successful response"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """;
+
+        await using var steam = new MemoryStream(Encoding.UTF8.GetBytes(document));
+        var restApi = await this._sut.ParseAsync(steam);
+
+        Assert.NotNull(restApi);
+        Assert.NotNull(restApi.Operations);
+        Assert.NotEmpty(restApi.Operations);
+
+        var firstOperation = restApi.Operations[0];
+
+        Assert.NotNull(firstOperation);
+        Assert.Equal("Get an item by ID", firstOperation.Description);
+        Assert.Equal("/items/{itemId}/{format}", firstOperation.Path);
+
+        var parameters = firstOperation.GetParameters();
+        Assert.NotNull(parameters);
+        Assert.Equal(2, parameters.Count);
+
+        var pathParameter = parameters.Single(static p => "itemId".Equals(p.Name, StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(pathParameter);
+        Assert.True(pathParameter.IsRequired);
+        Assert.Equal(RestApiParameterLocation.Path, pathParameter.Location);
+        Assert.Null(pathParameter.DefaultValue);
+        Assert.NotNull(pathParameter.Schema);
+        Assert.Equal("string", pathParameter.Schema.RootElement.GetProperty("type").GetString());
+        Assert.Equal("item ID override", pathParameter.Description);
+
+        var formatParameter = parameters.Single(static p => "format".Equals(p.Name, StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(formatParameter);
+        Assert.True(formatParameter.IsRequired);
+        Assert.Equal(RestApiParameterLocation.Path, formatParameter.Location);
+        Assert.Null(formatParameter.DefaultValue);
+        Assert.NotNull(formatParameter.Schema);
+        Assert.Equal("string", formatParameter.Schema.RootElement.GetProperty("type").GetString());
+    }
+
+    [Fact]
+    public void ItCanVerifyAllServerLevelsAreStoredCorrectly()
+    {
+        // Arrange
+        var document = new OpenApiDocument
+        {
+            Servers = new List<OpenApiServer>
+        {
+            new() { Url = "https://global-server.com", Description = "Global server" }
+        }
+        };
+
+        var pathItem = new OpenApiPathItem
+        {
+            Servers = new List<OpenApiServer>
+        {
+            new() { Url = "https://path-server.com", Description = "Path server" }
+        },
+            Operations = new Dictionary<OperationType, OpenApiOperation>
+            {
+                [OperationType.Get] = new OpenApiOperation
+                {
+                    OperationId = "GetTest",
+                    Servers = new List<OpenApiServer>
+                {
+                    new() { Url = "https://operation-server.com", Description = "Operation server" }
+                },
+                    Responses = new OpenApiResponses()
+                }
+            }
+        };
+
+        // Act
+        var operations = OpenApiDocumentParser.CreateRestApiOperations(document, "/test", pathItem, null, this._logger);
+        var operation = operations[0];
+
+        // Assert
+        // Verify servers
+        Assert.Single(operation.Servers);
+        Assert.Equal("https://global-server.com", operation.Servers[0].Url);
+        Assert.Equal("Global server", operation.Servers[0].Description);
+
+        // Verify path servers
+        Assert.Single(operation.PathServers);
+        Assert.Equal("https://path-server.com", operation.PathServers[0].Url);
+        Assert.Equal("Path server", operation.PathServers[0].Description);
+
+        // Verify operation servers
+        Assert.Single(operation.OperationServers);
+        Assert.Equal("https://operation-server.com", operation.OperationServers[0].Url);
+        Assert.Equal("Operation server", operation.OperationServers[0].Description);
     }
 
     private static MemoryStream ModifyOpenApiDocument(Stream openApiDocument, Action<IDictionary<string, object>> transformer)

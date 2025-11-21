@@ -8,7 +8,7 @@ from numpy import array, ndarray
 from pydantic import ValidationError
 from vertexai.language_models import TextEmbedding, TextEmbeddingModel
 
-from semantic_kernel.connectors.ai.embeddings.embedding_generator_base import EmbeddingGeneratorBase
+from semantic_kernel.connectors.ai.embedding_generator_base import EmbeddingGeneratorBase
 from semantic_kernel.connectors.ai.google.vertex_ai.services.vertex_ai_base import VertexAIBase
 from semantic_kernel.connectors.ai.google.vertex_ai.vertex_ai_prompt_execution_settings import (
     VertexAIEmbeddingPromptExecutionSettings,
@@ -51,7 +51,7 @@ class VertexAITextEmbedding(VertexAIBase, EmbeddingGeneratorBase):
             env_file_encoding (str): The encoding of the environment file.
         """
         try:
-            vertex_ai_settings = VertexAISettings.create(
+            vertex_ai_settings = VertexAISettings(
                 project_id=project_id,
                 region=region,
                 embedding_model_id=embedding_model_id,
@@ -93,9 +93,10 @@ class VertexAITextEmbedding(VertexAIBase, EmbeddingGeneratorBase):
         assert isinstance(settings, VertexAIEmbeddingPromptExecutionSettings)  # nosec
 
         vertexai.init(project=self.service_settings.project_id, location=self.service_settings.region)
+        assert self.service_settings.embedding_model_id is not None  # nosec
         model = TextEmbeddingModel.from_pretrained(self.service_settings.embedding_model_id)
         response: list[TextEmbedding] = await model.get_embeddings_async(
-            texts,
+            texts,  # type: ignore[arg-type]
             **settings.prepare_settings_dict(),
         )
 

@@ -2,12 +2,11 @@
 
 import json
 import logging
+from typing import TYPE_CHECKING
 
-from google.cloud.aiplatform_v1beta1.types.content import Blob, Candidate, Part
-from google.cloud.aiplatform_v1beta1.types.tool import FunctionCall, FunctionResponse
-from vertexai.generative_models import FunctionDeclaration, Tool, ToolConfig
+from google.cloud.aiplatform_v1beta1.types.content import Candidate
+from vertexai.generative_models import FunctionDeclaration, Part, Tool, ToolConfig
 
-from semantic_kernel.connectors.ai.function_call_choice_configuration import FunctionCallChoiceConfiguration
 from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceType
 from semantic_kernel.connectors.ai.google.shared_utils import (
     FUNCTION_CHOICE_TYPE_TO_GOOGLE_FUNCTION_CALLING_MODE,
@@ -16,7 +15,6 @@ from semantic_kernel.connectors.ai.google.shared_utils import (
 from semantic_kernel.connectors.ai.google.vertex_ai.vertex_ai_prompt_execution_settings import (
     VertexAIChatPromptExecutionSettings,
 )
-from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.function_call_content import FunctionCallContent
 from semantic_kernel.contents.function_result_content import FunctionResultContent
@@ -25,6 +23,10 @@ from semantic_kernel.contents.text_content import TextContent
 from semantic_kernel.contents.utils.finish_reason import FinishReason as SemanticKernelFinishReason
 from semantic_kernel.exceptions.service_exceptions import ServiceInvalidRequestError
 from semantic_kernel.functions.kernel_function_metadata import KernelFunctionMetadata
+
+if TYPE_CHECKING:
+    from semantic_kernel.connectors.ai.function_call_choice_configuration import FunctionCallChoiceConfiguration
+    from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ def format_user_message(message: ChatMessageContent) -> list[Part]:
     parts: list[Part] = []
     for item in message.items:
         if isinstance(item, TextContent):
-            parts.append(Part(text=message.content))
+            parts.append(Part.from_text(message.content))
         elif isinstance(item, ImageContent):
             parts.append(_create_image_part(item))
         else:
@@ -85,16 +87,15 @@ def format_assistant_message(message: ChatMessageContent) -> list[Part]:
     for item in message.items:
         if isinstance(item, TextContent):
             if item.text:
-                parts.append(Part(text=item.text))
+                parts.append(Part.from_text(item.text))
         elif isinstance(item, FunctionCallContent):
             parts.append(
-                Part(
-                    function_call=FunctionCall(
-                        name=item.name,
-                        # Convert the arguments to a dictionary if it is a string
-                        args=json.loads(item.arguments) if isinstance(item.arguments, str) else item.arguments,
-                    )
-                )
+                Part.from_dict({
+                    "function_call": {
+                        "name": item.name,
+                        "args": json.loads(item.arguments) if isinstance(item.arguments, str) else item.arguments,
+                    }
+                })
             )
         elif isinstance(item, ImageContent):
             parts.append(_create_image_part(item))
@@ -121,14 +122,11 @@ def format_tool_message(message: ChatMessageContent) -> list[Part]:
         if isinstance(item, FunctionResultContent):
             gemini_function_name = item.custom_fully_qualified_name(GEMINI_FUNCTION_NAME_SEPARATOR)
             parts.append(
-                Part(
-                    function_response=FunctionResponse(
-                        name=gemini_function_name,
-                        response={
-                            "name": gemini_function_name,
-                            "content": str(item.result),
-                        },
-                    )
+                Part.from_function_response(
+                    gemini_function_name,
+                    {
+                        "content": str(item.result),
+                    },
                 )
             )
 
@@ -149,8 +147,8 @@ def kernel_function_metadata_to_vertex_ai_function_call_format(metadata: KernelF
 
 
 def update_settings_from_function_choice_configuration(
-    function_choice_configuration: FunctionCallChoiceConfiguration,
-    settings: PromptExecutionSettings,
+    function_choice_configuration: "FunctionCallChoiceConfiguration",
+    settings: "PromptExecutionSettings",
     type: FunctionChoiceType,
 ) -> None:
     """Update the settings from a FunctionChoiceConfiguration."""
@@ -174,7 +172,7 @@ def update_settings_from_function_choice_configuration(
 
 def _create_image_part(image_content: ImageContent) -> Part:
     if image_content.data_uri:
-        return Part(inline_data=Blob(mime_type=image_content.mime_type, data=image_content.data))
+        return Part.from_data(image_content.data, image_content.mime_type)  # type: ignore[arg-type]
 
     # The Google AI API doesn't support images from arbitrary URIs:
     # https://github.com/google-gemini/generative-ai-python/issues/357

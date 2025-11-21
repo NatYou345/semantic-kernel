@@ -20,18 +20,10 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
         os: [ubuntu-latest, windows-latest, macos-latest]
         experimental: [false]
-        # include:
-        #   - python-version: "3.13"
-        #     os: "ubuntu-latest"
-        #     experimental: true
-        #   - python-version: "3.13t"
-        #     os: "ubuntu-latest"
-        #     experimental: true
-        #     gil: 0
-        #   - python-version: "3.13t"
-        #     os: "ubuntu-latest"
-        #     experimental: true
-        #     gil: 1
+        include:
+          - python-version: "3.13"
+            os: "ubuntu-latest"
+            experimental: true
     env:
       UV_PYTHON: ${{ matrix.python-version }}
     permissions:
@@ -40,22 +32,23 @@ jobs:
       run:
         working-directory: python
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v6
         with:
           version: "0.5.x"
           enable-cache: true
           cache-suffix: ${{ runner.os }}-${{ matrix.python-version }}
+          cache-dependency-glob: "**/uv.lock"
       - name: Install the project
-        run: uv sync --all-extras --dev
+        run: uv sync --all-extras --dev -U --prerelease=if-necessary-or-explicit
       - name: Test with pytest
         env:
           PYTHON_GIL: ${{ matrix.gil }}
         run: uv run --frozen pytest --junitxml=pytest.xml ./tests/unit
       - name: Surface failing tests
         if: ${{ !matrix.experimental }}
-        uses: pmeier/pytest-results-action@main
+        uses: pmeier/pytest-results-action@v0.7.2
         with:
           path: python/pytest.xml
           summary: true

@@ -1,7 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
-
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
@@ -93,7 +91,7 @@ internal static partial class KernelFunctionLogMessages
     /// Logs successful invocation of a <see cref="KernelFunction"/>.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 1,
         Level = LogLevel.Information,
         Message = "Function {PluginName}-{FunctionName} succeeded.")]
     public static partial void LogFunctionInvokedSuccess(this ILogger logger, string? pluginName, string functionName);
@@ -170,7 +168,7 @@ internal static partial class KernelFunctionLogMessages
     /// Logs <see cref="KernelFunction"/> error.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 2,
         Level = LogLevel.Error,
         Message = "Function {PluginName}-{FunctionName} failed. Error: {Message}")]
     public static partial void LogFunctionError(
@@ -184,7 +182,7 @@ internal static partial class KernelFunctionLogMessages
     /// Logs <see cref="KernelFunction"/> complete.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 3,
         Level = LogLevel.Information,
         Message = "Function {PluginName}-{FunctionName} completed. Duration: {Duration}s")]
     public static partial void LogFunctionComplete(
@@ -197,7 +195,7 @@ internal static partial class KernelFunctionLogMessages
     /// Logs streaming invocation of a <see cref="KernelFunction"/>.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 4,
         Level = LogLevel.Information,
         Message = "Function {PluginName}-{FunctionName} streaming.")]
     public static partial void LogFunctionStreamingInvoking(
@@ -209,7 +207,7 @@ internal static partial class KernelFunctionLogMessages
     /// Logs <see cref="KernelFunction"/> streaming complete.
     /// </summary>
     [LoggerMessage(
-        EventId = 0,
+        EventId = 5,
         Level = LogLevel.Information,
         Message = "Function {PluginName}-{FunctionName} streaming completed. Duration: {Duration}s.")]
     public static partial void LogFunctionStreamingComplete(

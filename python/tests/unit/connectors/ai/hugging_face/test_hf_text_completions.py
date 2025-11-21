@@ -4,7 +4,7 @@ from threading import Thread
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from transformers import TextIteratorStreamer
+from transformers import AutoTokenizer, TextIteratorStreamer
 
 from semantic_kernel.connectors.ai.hugging_face.services.hf_text_completion import HuggingFaceTextCompletion
 from semantic_kernel.connectors.ai.prompt_execution_settings import PromptExecutionSettings
@@ -14,7 +14,6 @@ from semantic_kernel.kernel import Kernel
 from semantic_kernel.prompt_template.prompt_template_config import PromptTemplateConfig
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("model_name", "task", "input_str"),
     [
@@ -24,7 +23,7 @@ from semantic_kernel.prompt_template.prompt_template_config import PromptTemplat
             "translate English to Dutch: Hello, how are you?",
         ),
         (
-            "jotamunz/billsum_tiny_summarization",
+            "Falconsai/text_summarization",
             "summarization",
             """
         Summarize: Whales are fully aquatic, open-ocean animals:
@@ -74,7 +73,6 @@ async def test_text_completion(model_name, task, input_str):
         assert mock_pipeline.call_args.args[0] == input_str
 
 
-@pytest.mark.asyncio
 async def test_text_completion_throws():
     kernel = Kernel()
 
@@ -109,7 +107,6 @@ async def test_text_completion_throws():
             await kernel.invoke(function_name="TestFunction", plugin_name="TestPlugin", arguments=arguments)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("model_name", "task", "input_str"),
     [
@@ -139,6 +136,10 @@ async def test_text_completion_streaming(model_name, task, input_str):
             side_effect=Mock(spec=Thread),
         ),
         patch(
+            "semantic_kernel.connectors.ai.hugging_face.services.hf_text_completion.AutoTokenizer",
+            side_effect=Mock(spec=AutoTokenizer),
+        ),
+        patch(
             "semantic_kernel.connectors.ai.hugging_face.services.hf_text_completion.TextIteratorStreamer",
             return_value=mock_streamer,
         ) as mock_stream,
@@ -156,7 +157,6 @@ async def test_text_completion_streaming(model_name, task, input_str):
         assert result[0][0].inner_content == "mocked_text"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("model_name", "task", "input_str"),
     [
